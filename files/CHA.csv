@@ -1,0 +1,92 @@
+2823;9;Other hemolytic anemias due to enzyme deficiency
+2828;9;Other specified hereditary hemolytic anemias
+2829;9;Hereditary hemolytic anemia, unspecified
+2830;9;Autoimmune hemolytic anemias
+28310;9;Non-autoimmune hemolytic anemia, unspecified
+28319;9;Other non-autoimmune hemolytic anemias
+2839;9;Acquired hemolytic anemia, unspecified
+7740;9;Perinatal jaundice from hereditary hemolytic anemias
+#78066;9;Febrile nonhemolytic transfusion reaction
+#99961;9;ABO incompatibility with hemolytic transfusion reaction not specified as acute or delayed
+#99962;9;ABO incompatibility with acute hemolytic transfusion reaction
+#99963;9;ABO incompatibility with delayed hemolytic transfusion reaction
+#99971;9;Rh incompatibility with hemolytic transfusion reaction not specified as acute or delayed
+#99972;9;Rh incompatibility with acute hemolytic transfusion reaction
+#99973;9;Rh incompatibility with delayed hemolytic transfusion reaction
+#99976;9;Non-ABO incompatibility with hemolytic transfusion reaction not specified as acute or delayed
+#99977;9;Non-ABO incompatibility with acute hemolytic transfusion reaction
+#99978;9;Non-ABO incompatibility with delayed hemolytic transfusion reaction
+#99984;9;Acute hemolytic transfusion reaction, incompatibility unspecified
+#99985;9;Delayed hemolytic transfusion reaction, incompatibility unspecified
+D58;10;Other hereditary hemolytic anemias
+D588;10;Other specified hereditary hemolytic anemias
+D589;10;Hereditary hemolytic anemia, unspecified
+D59;10;Acquired hemolytic anemia
+#D590;10;Drug-induced autoimmune hemolytic anemia
+D591;10;Other autoimmune hemolytic anemias
+D5910;10;Autoimmune hemolytic anemia, unspecified
+D5911;10;Warm autoimmune hemolytic anemia
+D5912;10;Cold autoimmune hemolytic anemia
+D5913;10;Mixed type autoimmune hemolytic anemia
+D5919;10;Other autoimmune hemolytic anemia
+#D592;10;Drug-induced nonautoimmune hemolytic anemia
+#D5931;10;Infection-associated hemolytic-uremic syndrome
+D5932;10;Hereditary hemolytic-uremic syndrome
+D5939;10;Other hemolytic-uremic syndrome
+D594;10;Other nonautoimmune hemolytic anemias
+D598;10;Other acquired hemolytic anemias
+D599;10;Acquired hemolytic anemia, unspecified
+P558;10;Other hemolytic diseases of newborn
+P56;10;Hydrops fetalis due to hemolytic disease
+P569;10;Hydrops fetalis due to other and unspecified hemolytic disease
+P5690;10;Hydrops fetalis due to unspecified hemolytic disease
+P5699;10;Hydrops fetalis due to other hemolytic disease
+P832;10;Hydrops fetalis not due to hemolytic disease
+#R5084;10;Febrile nonhemolytic transfusion reaction
+#T8031;10;ABO incompatibility with hemolytic transfusion reaction
+#T80310;10;ABO incompatibility with acute hemolytic transfusion reaction
+#T80310A;10;ABO incompatibility with acute hemolytic transfusion reaction, initial encounter
+#T80310D;10;ABO incompatibility with acute hemolytic transfusion reaction, subsequent encounter
+#T80310S;10;ABO incompatibility with acute hemolytic transfusion reaction, sequela
+#T80311;10;ABO incompatibility with delayed hemolytic transfusion reaction
+#T80311A;10;ABO incompatibility with delayed hemolytic transfusion reaction, initial encounter
+#T80311D;10;ABO incompatibility with delayed hemolytic transfusion reaction, subsequent encounter
+#T80311S;10;ABO incompatibility with delayed hemolytic transfusion reaction, sequela
+#T80319;10;ABO incompatibility with hemolytic transfusion reaction, unspecified
+#T80319A;10;ABO incompatibility with hemolytic transfusion reaction, unspecified, initial encounter
+#T80319D;10;ABO incompatibility with hemolytic transfusion reaction, unspecified, subsequent encounter
+#T80319S;10;ABO incompatibility with hemolytic transfusion reaction, unspecified, sequela
+#T8041;10;Rh incompatibility with hemolytic transfusion reaction
+#T80410;10;Rh incompatibility with acute hemolytic transfusion reaction
+#T80410A;10;Rh incompatibility with acute hemolytic transfusion reaction, initial encounter
+#T80410D;10;Rh incompatibility with acute hemolytic transfusion reaction, subsequent encounter
+#T80410S;10;Rh incompatibility with acute hemolytic transfusion reaction, sequela
+#T80411;10;Rh incompatibility with delayed hemolytic transfusion reaction
+#T80411A;10;Rh incompatibility with delayed hemolytic transfusion reaction, initial encounter
+#T80411D;10;Rh incompatibility with delayed hemolytic transfusion reaction, subsequent encounter
+#T80411S;10;Rh incompatibility with delayed hemolytic transfusion reaction, sequela
+#T80419;10;Rh incompatibility with hemolytic transfusion reaction, unspecified
+#T80419A;10;Rh incompatibility with hemolytic transfusion reaction, unspecified, initial encounter
+#T80419D;10;Rh incompatibility with hemolytic transfusion reaction, unspecified, subsequent encounter
+#T80419S;10;Rh incompatibility with hemolytic transfusion reaction, unspecified, sequela
+#T80910;10;Acute hemolytic transfusion reaction, unspecified incompatibility
+#T80910A;10;Acute hemolytic transfusion reaction, unspecified incompatibility, initial encounter
+#T80910D;10;Acute hemolytic transfusion reaction, unspecified incompatibility, subsequent encounter
+#T80910S;10;Acute hemolytic transfusion reaction, unspecified incompatibility, sequela
+#T80911;10;Delayed hemolytic transfusion reaction, unspecified incompatibility
+#T80911A;10;Delayed hemolytic transfusion reaction, unspecified incompatibility, initial encounter
+#T80911D;10;Delayed hemolytic transfusion reaction, unspecified incompatibility, subsequent encounter
+#T80911S;10;Delayed hemolytic transfusion reaction, unspecified incompatibility, sequela
+#T80A1;10;Non-ABO incompatibility with hemolytic transfusion reaction
+#T80A10;10;Non-ABO incompatibility with acute hemolytic transfusion reaction
+#T80A10A;10;Non-ABO incompatibility with acute hemolytic transfusion reaction, initial encounter
+#T80A10D;10;Non-ABO incompatibility with acute hemolytic transfusion reaction, subsequent encounter
+#T80A10S;10;Non-ABO incompatibility with acute hemolytic transfusion reaction, sequela
+#T80A11;10;Non-ABO incompatibility with delayed hemolytic transfusion reaction
+#T80A11A;10;Non-ABO incompatibility with delayed hemolytic transfusion reaction, initial encounter
+#T80A11D;10;Non-ABO incompatibility with delayed hemolytic transfusion reaction, subsequent encounter
+#T80A11S;10;Non-ABO incompatibility with delayed hemolytic transfusion reaction, sequela
+#T80A19;10;Non-ABO incompatibility with hemolytic transfusion reaction, unspecified
+#T80A19A;10;Non-ABO incompatibility with hemolytic transfusion reaction, unspecified, initial encounter
+#T80A19D;10;Non-ABO incompatibility with hemolytic transfusion reaction, unspecified, subsequent encounter
+#T80A19S;10;Non-ABO incompatibility with hemolytic transfusion reaction, unspecified, sequela

@@ -1,0 +1,186 @@
+1537;9;Malignant neoplasm of splenic flexure
+2894;9;Hypersplenism
+28951;9;Chronic congestive splenomegaly
+28953;9;Neutropenic splenomegaly
+44283;9;Aneurysm of splenic artery
+90223;9;Injury to splenic artery
+90234;9;Injury to splenic vein
+90239;9;Injury to portal and splenic veins, other
+C185;10;Malignant neoplasm of splenic flexure
+C861;10;Hepatosplenic T-cell lymphoma
+D5702;10;Hb-SS disease with splenic sequestration
+D57212;10;Sickle-cell/Hb-C disease with splenic sequestration
+D57412;10;Sickle-cell thalassemia, unspecified, with splenic sequestration
+D57432;10;Sickle-cell thalassemia beta zero with splenic sequestration
+D57452;10;Sickle-cell thalassemia beta plus with splenic sequestration
+D57812;10;Other sickle-cell disorders with splenic sequestration
+D730;10;Hyposplenism
+D731;10;Hypersplenism
+D732;10;Chronic congestive splenomegaly
+D7381;10;Neutropenic splenomegaly
+Q8901;10;Asplenia (congenital)
+R16;10;Hepatomegaly and splenomegaly, not elsewhere classified
+R162;10;Hepatomegaly with splenomegaly, not elsewhere classified
+S353;10;Injury of portal or splenic vein and branches
+S3532;10;Injury of splenic vein
+S35321;10;Laceration of splenic vein
+S35321A;10;Laceration of splenic vein, initial encounter
+S35321D;10;Laceration of splenic vein, subsequent encounter
+S35321S;10;Laceration of splenic vein, sequela
+S35328;10;Other specified injury of splenic vein
+S35328A;10;Other specified injury of splenic vein, initial encounter
+S35328D;10;Other specified injury of splenic vein, subsequent encounter
+S35328S;10;Other specified injury of splenic vein, sequela
+S35329;10;Unspecified injury of splenic vein
+S35329A;10;Unspecified injury of splenic vein, initial encounter
+S35329D;10;Unspecified injury of splenic vein, subsequent encounter
+S35329S;10;Unspecified injury of splenic vein, sequela
+1591;9;Malignant neoplasm of spleen, not elsewhere classified
+1978;9;Secondary malignant neoplasm of other digestive organs and spleen
+20007;9;Reticulosarcoma, spleen
+20017;9;Lymphosarcoma, spleen
+20027;9;Burkitt's tumor or lymphoma, spleen
+20037;9;Marginal zone lymphoma, spleen
+20047;9;Mantle cell lymphoma, spleen
+20057;9;Primary central nervous system lymphoma, spleen
+20067;9;Anaplastic large cell lymphoma, spleen
+20077;9;Large cell lymphoma, spleen
+20087;9;Other named variants of lymphosarcoma and reticulosarcoma, spleen
+20107;9;Hodgkin's paragranuloma, spleen
+20117;9;Hodgkin's granuloma, spleen
+20127;9;Hodgkin's sarcoma, spleen
+20147;9;Hodgkin's disease, lymphocytic-histiocytic predominance, spleen
+20157;9;Hodgkin's disease, nodular sclerosis, spleen
+20167;9;Hodgkin's disease, mixed cellularity, spleen
+20177;9;Hodgkin's disease, lymphocytic depletion, spleen
+20197;9;Hodgkin's disease, unspecified type, spleen
+20207;9;Nodular lymphoma, spleen
+20217;9;Mycosis fungoides, spleen
+20227;9;Sezary's disease, spleen
+20237;9;Malignant histiocytosis, spleen
+20247;9;Leukemic reticuloendotheliosis, spleen
+20257;9;Letterer-siwe disease, spleen
+20267;9;Malignant mast cell tumors, spleen
+20277;9;Peripheral T cell lymphoma, spleen
+20287;9;Other malignant lymphomas, spleen
+20297;9;Other and unspecified malignant neoplasms of lymphoid and histiocytic tissue, spleen
+28950;9;Disease of spleen, unspecified
+28959;9;Other diseases of spleen
+7590;9;Anomalies of spleen
+86500;9;Injury to spleen without mention of open wound into cavity, unspecified injury
+86501;9;Injury to spleen without mention of open wound into cavity, hematoma without rupture of capsule
+86502;9;Injury to spleen without mention of open wound into cavity, capsular tears, without major disruption of parenchyma
+86503;9;Injury to spleen without mention of open wound into cavity, laceration extending into parenchyma
+86504;9;Injury to spleen without mention of open wound into cavity, massive parenchymal disruption
+86509;9;Other injury into spleen without mention of open wound into cavity
+86510;9;Injury to spleen with open wound into cavity, unspecified injury
+86511;9;Injury to spleen with open wound into cavity, hematoma without rupture of capsule
+86512;9;Injury to spleen with open wound into cavity, capsular tears, without major disruption of parenchyma
+86513;9;Injury to spleen with open wound into cavity, laceration extending into parenchyma
+86514;9;Injury to spleen with open wound into cavity, massive parenchyma disruption
+86519;9;Other injury to spleen with open wound into cavity
+B510;10;Plasmodium vivax malaria with rupture of spleen
+C261;10;Malignant neoplasm of spleen
+C8107;10;Nodular lymphocyte predominant Hodgkin lymphoma, spleen
+C8117;10;Nodular sclerosis Hodgkin lymphoma, spleen
+C8127;10;Mixed cellularity Hodgkin lymphoma, spleen
+C8137;10;Lymphocyte depleted Hodgkin lymphoma, spleen
+C8147;10;Lymphocyte-rich Hodgkin lymphoma, spleen
+C8177;10;Other Hodgkin lymphoma, spleen
+C8197;10;Hodgkin lymphoma, unspecified, spleen
+C8207;10;Follicular lymphoma grade I, spleen
+C8217;10;Follicular lymphoma grade II, spleen
+C8227;10;Follicular lymphoma grade III, unspecified, spleen
+C8237;10;Follicular lymphoma grade IIIa, spleen
+C8247;10;Follicular lymphoma grade IIIb, spleen
+C8257;10;Diffuse follicle center lymphoma, spleen
+C8267;10;Cutaneous follicle center lymphoma, spleen
+C8287;10;Other types of follicular lymphoma, spleen
+C8297;10;Follicular lymphoma, unspecified, spleen
+C8307;10;Small cell B-cell lymphoma, spleen
+C8317;10;Mantle cell lymphoma, spleen
+C8337;10;Diffuse large B-cell lymphoma, spleen
+C8357;10;Lymphoblastic (diffuse) lymphoma, spleen
+C8377;10;Burkitt lymphoma, spleen
+C8387;10;Other non-follicular lymphoma, spleen
+C8397;10;Non-follicular (diffuse) lymphoma, unspecified, spleen
+C8407;10;Mycosis fungoides, spleen
+C8417;10;Sezary disease, spleen
+C8447;10;Peripheral T-cell lymphoma, not elsewhere classified, spleen
+C8467;10;Anaplastic large cell lymphoma, ALK-positive, spleen
+C8477;10;Anaplastic large cell lymphoma, ALK-negative, spleen
+C8497;10;Mature T/NK-cell lymphomas, unspecified, spleen
+C84A7;10;Cutaneous T-cell lymphoma, unspecified, spleen
+C84Z7;10;Other mature T/NK-cell lymphomas, spleen
+C8517;10;Unspecified B-cell lymphoma, spleen
+C8527;10;Mediastinal (thymic) large B-cell lymphoma, spleen
+C8587;10;Other specified types of non-Hodgkin lymphoma, spleen
+C8597;10;Non-Hodgkin lymphoma, unspecified, spleen
+D73;10;Diseases of spleen
+D733;10;Abscess of spleen
+D734;10;Cyst of spleen
+D735;10;Infarction of spleen
+D738;10;Other diseases of spleen
+D7389;10;Other diseases of spleen
+D739;10;Disease of spleen, unspecified
+D78;10;Intraoperative and postprocedural complications of the spleen
+D780;10;Intraoperative hemorrhage and hematoma of the spleen complicating a procedure
+D7801;10;Intraoperative hemorrhage and hematoma of the spleen complicating a procedure on the spleen
+D7802;10;Intraoperative hemorrhage and hematoma of the spleen complicating other procedure
+D781;10;Accidental puncture and laceration of the spleen during a procedure
+D7811;10;Accidental puncture and laceration of the spleen during a procedure on the spleen
+D7812;10;Accidental puncture and laceration of the spleen during other procedure
+D782;10;Postprocedural hemorrhage of the spleen following a procedure
+D7821;10;Postprocedural hemorrhage of the spleen following a procedure on the spleen
+D7822;10;Postprocedural hemorrhage of the spleen following other procedure
+D783;10;Postprocedural hematoma and seroma of the spleen following a procedure
+D7831;10;Postprocedural hematoma of the spleen following a procedure on the spleen
+D7832;10;Postprocedural hematoma of the spleen following other procedure
+D7833;10;Postprocedural seroma of the spleen following a procedure on the spleen
+D7834;10;Postprocedural seroma of the spleen following other procedure
+D788;10;Other intraoperative and postprocedural complications of the spleen
+D7881;10;Other intraoperative complications of the spleen
+D7889;10;Other postprocedural complications of the spleen
+P151;10;Birth injury to spleen
+Q890;10;Congenital absence and malformations of spleen
+Q8909;10;Congenital malformations of spleen
+S360;10;Injury of spleen
+S3600;10;Unspecified injury of spleen
+S3600XA;10;Unspecified injury of spleen, initial encounter
+S3600XD;10;Unspecified injury of spleen, subsequent encounter
+S3600XS;10;Unspecified injury of spleen, sequela
+S3602;10;Contusion of spleen
+S36020;10;Minor contusion of spleen
+S36020A;10;Minor contusion of spleen, initial encounter
+S36020D;10;Minor contusion of spleen, subsequent encounter
+S36020S;10;Minor contusion of spleen, sequela
+S36021;10;Major contusion of spleen
+S36021A;10;Major contusion of spleen, initial encounter
+S36021D;10;Major contusion of spleen, subsequent encounter
+S36021S;10;Major contusion of spleen, sequela
+S36029;10;Unspecified contusion of spleen
+S36029A;10;Unspecified contusion of spleen, initial encounter
+S36029D;10;Unspecified contusion of spleen, subsequent encounter
+S36029S;10;Unspecified contusion of spleen, sequela
+S3603;10;Laceration of spleen
+S36030;10;Superficial (capsular) laceration of spleen
+S36030A;10;Superficial (capsular) laceration of spleen, initial encounter
+S36030D;10;Superficial (capsular) laceration of spleen, subsequent encounter
+S36030S;10;Superficial (capsular) laceration of spleen, sequela
+S36031;10;Moderate laceration of spleen
+S36031A;10;Moderate laceration of spleen, initial encounter
+S36031D;10;Moderate laceration of spleen, subsequent encounter
+S36031S;10;Moderate laceration of spleen, sequela
+S36032;10;Major laceration of spleen
+S36032A;10;Major laceration of spleen, initial encounter
+S36032D;10;Major laceration of spleen, subsequent encounter
+S36032S;10;Major laceration of spleen, sequela
+S36039;10;Unspecified laceration of spleen
+S36039A;10;Unspecified laceration of spleen, initial encounter
+S36039D;10;Unspecified laceration of spleen, subsequent encounter
+S36039S;10;Unspecified laceration of spleen, sequela
+S3609;10;Other injury of spleen
+S3609XA;10;Other injury of spleen, initial encounter
+S3609XD;10;Other injury of spleen, subsequent encounter
+S3609XS;10;Other injury of spleen, sequela
+Z9081;10;Acquired absence of spleen
