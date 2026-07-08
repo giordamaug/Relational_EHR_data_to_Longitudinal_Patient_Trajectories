@@ -401,3 +401,20 @@ def extract_event_type_counters(event_sequences):
         .set_index("patient_id")
         .astype(int)
     )
+
+def split_array(a):
+    if not a:
+        return []
+
+    result = []
+    current = [a[0]]
+
+    for i in range(len(a) - 1):
+        if a[i] > a[i + 1]:
+            result.append(current)
+            current = [a[i + 1]]
+        else:
+            current.append(a[i + 1])
+
+    result.append(current)
+    return result
