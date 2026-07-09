@@ -229,9 +229,9 @@ def distrib_summary(df_orig, disease_mapper):
     df["nosplen"] = df["is_splenectomized?"].ne("YES")
 
     summary = (
-        df.groupby("base_pathology_area")
+        df.groupby("primary_disease")
         .agg(
-            Total=("base_pathology_area", "size"),
+            Total=("primary_disease", "size"),
 
             Splen=("splen", "sum"),
             NoSplen=("nosplen", "sum"),
@@ -248,7 +248,7 @@ def distrib_summary(df_orig, disease_mapper):
             TotalDeaths=("dead", "sum")
         )
         .reset_index()
-        .rename(columns={"base_pathology_area": "Disease"})
+        .rename(columns={"primary_disease": "Disease"})
     )
 
     summary["MortSplen"] = summary["SplenDeath"] / summary["Splen"].replace(0, np.nan) * 100
@@ -389,18 +389,18 @@ def plot_distrib(df, disease_mapper):
     tmp["event_length"] = tmp["events"].apply(len)
 
     tmp = tmp.dropna(
-        subset=["base_pathology_area", "event_length"]
+        subset=["primary_disease", "event_length"]
     )
 
     # Usa il mapping solo se serve
     if disease_mapper is not None:
-        tmp["base_pathology_area"] = tmp["base_pathology_area"].map(disease_mapper)
+        tmp["primary_disease"] = tmp["primary_disease"].map(disease_mapper)
 
     order = summary["Disease"].tolist()
 
     sns.boxplot(
         data=tmp,
-        x="base_pathology_area",
+        x="primary_disease",
         y="event_length",
         order=order,
         color=palette["Male"],
@@ -411,7 +411,7 @@ def plot_distrib(df, disease_mapper):
 
     sns.stripplot(
         data=tmp,
-        x="base_pathology_area",
+        x="primary_disease",
         y="event_length",
         order=order,
         color="black",
@@ -432,7 +432,7 @@ def plot_distrib(df, disease_mapper):
 
     # Counts above each boxplot
     counts = (
-        tmp["base_pathology_area"]
+        tmp["primary_disease"]
         .value_counts()
         .reindex(order)
         .fillna(0)
