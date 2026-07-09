@@ -164,7 +164,7 @@ def pie_plot(dataset, pathology_field, pathologies):
     plt.tight_layout()
     plt.show()
 
-def plot_event_boxplot(df, groupby="base_pathology_area", label_desc=None):
+def plot_event_boxplot(df, groupby="primary_disease", label_desc=None):
     df = df.copy()
 
     df['event_length'] = df['events'].apply(len)
