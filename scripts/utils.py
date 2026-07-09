@@ -18,7 +18,7 @@ class Settings:
                  pathologies = {}, 
                  methods = ["LSTM"], 
                  evfields = [],
-                 no_selection = False,
+                 no_selection = True,
                  spleen_flags = None,
                  save_events=False,
                  selected_spleen_flags = ['YES'],
