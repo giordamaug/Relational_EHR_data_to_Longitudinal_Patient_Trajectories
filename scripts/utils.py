@@ -10,64 +10,6 @@ from collections import Counter, defaultdict
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-class Settings:
-    def __init__(self, datafile = "datafile.json", 
-                 pathology_field = '',
-                 static_vars = [],
-                 target_var = 'target',
-                 pathologies = {}, 
-                 methods = ["LSTM"], 
-                 evfields = [],
-                 no_selection = True,
-                 spleen_flags = None,
-                 save_events=False,
-                 selected_spleen_flags = ['YES'],
-                 remove_events = [],
-                 enable_plot = True, to_latex=True, 
-                 batch_size = 4, n_splits = 5, min_events = 3, hidden_size = 128, embedding_size=128, num_epochs=10,
-                 lang='EN'):
-        self.datafile = datafile
-        self.num_epochs = num_epochs
-        self.static_vars = static_vars
-        self.target_var = target_var
-        self.embedding_dim = embedding_size
-        self.hidden_dim = hidden_size
-        self.batch_size = batch_size
-        self.pooling = 'mean'
-        self.enable_plot = enable_plot
-        self.n_splits = n_splits
-        self.min_events = min_events
-        self.random_state = 42
-        self.to_latex = to_latex
-        self.noselection = no_selection
-        self.pathologies = pathologies
-        self.methods = methods
-        self.evfields = evfields
-        self.remove_events= remove_events
-        self.selected_patient_ids = []
-        self.spleen_flags = spleen_flags
-        self.selected_spleen_flags = selected_spleen_flags
-        self.pathology_field=pathology_field
-        self.events_field='events'
-        self.is_splenectomized_field='is_splenectomized?'
-        self.save_events = save_events
-
-        try:
-            dataset = pd.read_json(self.datafile).set_index('id')
-            self.dataset_orig = dataset
-            self.dataset = self.dataset_orig.copy()
-
-            if self.spleen_flags is not None:
-                self.dataset = self.dataset[self.dataset[self.is_splenectomized_field].isin(self.selected_spleen_flags)]
-                if not self.noselection:
-                    self.dataset = self.dataset[self.dataset[self.pathology_field].isin(self.pathologies.keys())]
-            
-            print(f"Loaded {len(self.dataset)} records from {self.datafile}")
-            self.selected_patient_ids = self.dataset.index.values
-        except Exception as e:
-            print("Error loading dataset:", e)
-
-
 def plot_group_distribution_with_event_boxplot(df, groupby="primary_disease_area", label_desc=None):
     df = df.copy()
 
