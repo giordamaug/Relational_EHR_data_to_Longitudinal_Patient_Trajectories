@@ -1,5 +1,5 @@
-from .embedding import FlexLSTMembedder, BEHRTembedder, COUNTEmbedder, TimeAwareLSTMEmbedder, DipoleEmbedder, CEHRBERTembedder
-from .embedding import StaticEmbedder, RETAINembedder, DOMEEmbedder, BINARYEmbedder, GRUEmbedder, GRUEDembedder, Med2VecEmbedder
+from .embedding import FlexLSTMembedder, BEHRTembedder, COUNTEmbedder, DipoleEmbedder, CEHRBERTembedder
+from .embedding import StaticEmbedder, DOMEEmbedder, BINARYEmbedder, FREQEmbedder, GRUEmbedder, Med2VecEmbedder
 
 def configure(event_sequences, visit_sequences, event_sequences_type, labels, X_static, args):
     vocab = set()
@@ -129,5 +129,25 @@ def configure(event_sequences, visit_sequences, event_sequences_type, labels, X_
                 "sequences": event_sequences_type,
                 "enable_plot": args.enable_plot
             }
-        }
+        },
+        "BINARY": 
+        {
+            "func": BINARYEmbedder,
+            "kwargs": {
+                "sequences": event_sequences,
+                "vocab": vocab,
+                "targets": [args.target_var],
+                "enable_plot": args.enable_plot
+            }
+        },
+        "FREQUENCY": 
+        {
+            "func": FREQEmbedder,
+            "kwargs": {
+                "sequences": event_sequences,
+                "vocab": vocab,
+                "targets": [args.target_var],
+                "enable_plot": args.enable_plot
+            }
+        },
     }
