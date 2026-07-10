@@ -457,14 +457,35 @@ def BINARYEmbedder(sequences,
                    frame_plot=None,
                     ):
     all_idx = np.concatenate((train_idx, valid_idx), axis=0)
-    colnames = list(set(vocab) - set(list(targets)))
-    zdata = np.zeros(shape=(len(all_idx),len(colnames)))
-    df_bin = pd.DataFrame(zdata, columns=colnames, index=all_idx)
+    zdata = np.zeros(shape=(len(all_idx),len(vocab)))
+    df_bin = pd.DataFrame(zdata, columns=list(vocab), index=all_idx)
     with frame_tqdm:
         frame_tqdm.clear_output(wait=True)
         for id,events in tqdm(sequences.items(), total=len(sequences), desc="[BINARY] contruct:"):
             for event,date in events:
                 df_bin.loc[id][event] = 1
+    df_bin = rename_cols(df_bin)
+    train_df = df_bin.loc[train_idx]
+    test_df = df_bin.loc[valid_idx]
+    return train_df, test_df
+
+def FREQEmbedder(sequences,
+                   targets,
+                   vocab=None,
+                   train_idx=None,
+                   valid_idx=None,
+                   enable_plot=False,
+                   frame_tqdm=None,
+                   frame_plot=None,
+                    ):
+    all_idx = np.concatenate((train_idx, valid_idx), axis=0)
+    zdata = np.zeros(shape=(len(all_idx),len(vocab)))
+    df_bin = pd.DataFrame(zdata, columns=list(vocab), index=all_idx)
+    with frame_tqdm:
+        frame_tqdm.clear_output(wait=True)
+        for id,events in tqdm(sequences.items(), total=len(sequences), desc="[BINARY] contruct:"):
+            for event,date in events:
+                df_bin.loc[id][event] += 1
     df_bin = rename_cols(df_bin)
     train_df = df_bin.loc[train_idx]
     test_df = df_bin.loc[valid_idx]
