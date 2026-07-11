@@ -749,6 +749,7 @@ def plot_distribution(df, disease_mapper):
     )
 
     _, ymax_b = ax_b.get_ylim()
+    #ymax_b = 1000
 
     for i, disease in enumerate(order):
 
@@ -762,8 +763,9 @@ def plot_distribution(df, disease_mapper):
             fontweight="bold"
         )
 
-    # Per impostare soltanto il limite superiore:
-    ax_b.set_ylim(top=ymax_b)
+    ## Per impostare soltanto il limite superiore:
+    #ax_b.set_ylim(top=ymax_b)
+    ax_b.set_ylim(0,ymax_b)
 
     # =====================================================
     # PANEL C
@@ -846,7 +848,7 @@ def plot_distribution(df, disease_mapper):
         ax=ax_c
     )
 
-    ax_c.set_title("C. Mortality by gender and total")
+    ax_c.set_title("C. Mortality by gender")
     ax_c.set_xlabel("")
     ax_c.set_ylabel("Mortality (%)")
     ax_c.tick_params(axis="x", rotation=45)
