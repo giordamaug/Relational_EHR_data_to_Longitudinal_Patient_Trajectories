@@ -253,26 +253,16 @@ def distrib_summary(df_orig, disease_mapper):
 
     summary["MortSplen"] = summary["SplenDeath"] / summary["Splen"].replace(0, np.nan) * 100
     summary["MortNoSplen"] = summary["NoSplenDeath"] / summary["NoSplen"].replace(0, np.nan) * 100
+    summary["MortMale"] = (summary["MaleDeath"] / summary["Male"].replace(0, np.nan) * 100)
+    summary["MortFemale"] = (summary["FemaleDeath"] / summary["Female"].replace(0, np.nan) * 100)
+    summary["Mortality"] = (summary["TotalDeaths"] / summary["Total"] * 100)
 
-    summary["MortMale"] = (
-        summary["MaleDeath"] /
-        summary["Male"].replace(0, np.nan) * 100
-    )
-
-    summary["MortFemale"] = (
-        summary["FemaleDeath"] /
-        summary["Female"].replace(0, np.nan) * 100
-    )
-
-    summary["Mortality"] = (
-        summary["TotalDeaths"] /
-        summary["Total"] * 100
-    )
+    summary.replace(np.nan, 0, inplace=True)
 
     return summary.sort_values("Total", ascending=False)
 
 
-def plot_distrib(df, disease_mapper):
+def plot_distrib_with_splenectomized(df, disease_mapper):
     
     summary = distrib_summary(df, disease_mapper)
     palette = {
@@ -352,7 +342,7 @@ def plot_distrib(df, disease_mapper):
             fontweight="bold"
         )
 
-    axs[0,0].set_title("A. Cohort composition and splenectomy status")
+    axs[0,0].set_title("A. Cohort composition")
     axs[0,0].set_xlabel("")
     axs[0,0].set_ylabel("Number of patients")
     axs[0,0].tick_params(axis="x", rotation=45)
@@ -565,9 +555,10 @@ def plot_distrib(df, disease_mapper):
         if not(row["Splen"] == 0 or row["Splen"] == np.nan):
             labels.append(f"{int(row['SplenDeath'])}/{int(row['Splen'])}")
 
-    for _, row in summary.iterrows():
-        if not(row["NoSplen"] == 0 or row["NoSplen"] == np.nan):
-            labels.append(f"{int(row['NoSplenDeath'])}/{int(row['NoSplen'])}")
+    if not spleen_flag:
+        for _, row in summary.iterrows():
+            if not(row["NoSplen"] == 0 or row["NoSplen"] == np.nan):
+                labels.append(f"{int(row['NoSplenDeath'])}/{int(row['NoSplen'])}")
 
     k = 0
 
@@ -607,4 +598,339 @@ def plot_distrib(df, disease_mapper):
         )
 
         ax.set_axisbelow(True)
+    return fig
+
+def plot_distribution(df, disease_mapper):
+
+    summary = distrib_summary(df, disease_mapper).copy()
+
+    palette = {
+        "Male": "#4C72B0",
+        "Female": "#DD8452",
+        "Splenectomized": "#55A868",
+    }
+
+    sns.set_theme(
+        style="ticks",
+        context="paper",
+        font_scale=1.35
+    )
+
+    # Ordine comune delle disease in tutti i pannelli
+    summary = summary.sort_values(
+        "Total",
+        ascending=False
+    ).reset_index(drop=True)
+
+    order = summary["Disease"].tolist()
+
+    # =====================================================
+    # FIGURE LAYOUT
+    # =====================================================
+
+    fig = plt.figure(
+        figsize=(10, 8),
+        constrained_layout=True
+    )
+
+    gs = fig.add_gridspec(
+        nrows=2,
+        ncols=2,
+        height_ratios=[1, 1.1]
+    )
+
+    ax_a = fig.add_subplot(gs[0, 0])
+    ax_b = fig.add_subplot(gs[0, 1])
+
+    # Panel C occupa entrambe le colonne
+    ax_c = fig.add_subplot(gs[1, :])
+
+    # =====================================================
+    # PANEL A
+    # Cohort composition
+    # =====================================================
+
+    tmp_a = summary.copy()
+
+    ax_a.bar(
+        tmp_a["Disease"],
+        tmp_a["Total"],
+        color=palette["Splenectomized"],
+        edgecolor="white",
+        linewidth=0.7
+    )
+
+    # Conteggio totale sopra ogni barra
+    for i, row in enumerate(tmp_a.itertuples()):
+
+        ax_a.text(
+            i,
+            row.Total + tmp_a["Total"].max() * 0.02,
+            f"{int(row.Total)}",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold"
+        )
+
+    ax_a.set_title("A. Cohort composition")
+    ax_a.set_xlabel("")
+    ax_a.set_ylabel("Number of patients")
+    ax_a.tick_params(axis="x", rotation=45)
+
+    ax_a.set_ylim(
+        top=tmp_a["Total"].max() * 1.15
+    )
+
+    # =====================================================
+    # PANEL B
+    # Event burden
+    # =====================================================
+
+    tmp_b = df.copy()
+
+    # Calcolo robusto del numero di eventi
+    tmp_b["event_length"] = tmp_b["events"].apply(
+        lambda value: len(value)
+        if isinstance(value, (list, tuple, set, dict))
+        else np.nan
+    )
+
+    tmp_b = tmp_b.dropna(
+        subset=["primary_disease", "event_length"]
+    )
+
+    if disease_mapper is not None:
+        tmp_b["primary_disease"] = (
+            tmp_b["primary_disease"]
+            .map(disease_mapper)
+        )
+
+    # Elimina righe non incluse nel mapping
+    tmp_b = tmp_b.dropna(
+        subset=["primary_disease"]
+    )
+
+    sns.boxplot(
+        data=tmp_b,
+        x="primary_disease",
+        y="event_length",
+        order=order,
+        color=palette["Male"],
+        width=0.55,
+        showfliers=False,
+        ax=ax_b
+    )
+
+    sns.stripplot(
+        data=tmp_b,
+        x="primary_disease",
+        y="event_length",
+        order=order,
+        color="black",
+        alpha=0.25,
+        size=2,
+        jitter=0.25,
+        ax=ax_b
+    )
+
+    ax_b.set_title("B. Event burden")
+    ax_b.set_xlabel("")
+    ax_b.set_ylabel("Number of events")
+    ax_b.tick_params(axis="x", rotation=45)
+
+    # Numero di pazienti per categoria
+    counts = (
+        tmp_b["primary_disease"]
+        .value_counts()
+        .reindex(order)
+        .fillna(0)
+        .astype(int)
+    )
+
+    _, ymax_b = ax_b.get_ylim()
+
+    for i, disease in enumerate(order):
+
+        ax_b.text(
+            i,
+            ymax_b * 0.98,
+            f"n={counts.loc[disease]}",
+            ha="center",
+            va="top",
+            fontsize=8,
+            fontweight="bold"
+        )
+
+    # Per impostare soltanto il limite superiore:
+    ax_b.set_ylim(top=ymax_b)
+
+    # =====================================================
+    # PANEL C
+    # Mortality by subgroup
+    # =====================================================
+
+    group_order = [
+        "Male",
+        "Female",
+        "Splenectomized"
+    ]
+
+    mortality_long = pd.concat(
+        [
+            summary[
+                ["Disease", "Male", "MaleDeath", "MortMale"]
+            ]
+            .rename(
+                columns={
+                    "Male": "N",
+                    "MaleDeath": "Deaths",
+                    "MortMale": "MortalityRate"
+                }
+            )
+            .assign(Group="Male"),
+
+            summary[
+                ["Disease", "Female", "FemaleDeath", "MortFemale"]
+            ]
+            .rename(
+                columns={
+                    "Female": "N",
+                    "FemaleDeath": "Deaths",
+                    "MortFemale": "MortalityRate"
+                }
+            )
+            .assign(Group="Female"),
+
+            summary[
+                ["Disease", "Splen", "SplenDeath", "MortSplen"]
+            ]
+            .rename(
+                columns={
+                    "Splen": "N",
+                    "SplenDeath": "Deaths",
+                    "MortSplen": "MortalityRate"
+                }
+            )
+            .assign(Group="Splenectomized")
+        ],
+        ignore_index=True
+    )
+
+    # Impone esplicitamente l’ordine delle disease
+    mortality_long["Disease"] = pd.Categorical(
+        mortality_long["Disease"],
+        categories=order,
+        ordered=True
+    )
+
+    mortality_long["Group"] = pd.Categorical(
+        mortality_long["Group"],
+        categories=group_order,
+        ordered=True
+    )
+
+    mortality_long = mortality_long.sort_values(
+        ["Disease", "Group"]
+    )
+
+    sns.barplot(
+        data=mortality_long,
+        x="Disease",
+        y="MortalityRate",
+        hue="Group",
+        order=order,
+        hue_order=group_order,
+        palette=palette,
+        errorbar=None,
+        ax=ax_c
+    )
+
+    ax_c.set_title("C. Mortality by gender and total")
+    ax_c.set_xlabel("")
+    ax_c.set_ylabel("Mortality (%)")
+    ax_c.tick_params(axis="x", rotation=45)
+
+    L = ax_c.legend(
+        title="",
+        frameon=False,
+        ncol=3
+    )
+    L.get_texts()[2].set_text('Total')
+
+    # -----------------------------------------------------
+    # Etichette: decessi / pazienti del sottogruppo
+    # -----------------------------------------------------
+
+    for container, group in zip(
+        ax_c.containers,
+        group_order
+    ):
+
+        group_data = (
+            mortality_long[
+                mortality_long["Group"] == group
+            ]
+            .set_index("Disease")
+            .reindex(order)
+        )
+
+        labels = []
+
+        for _, row in group_data.iterrows():
+
+            if pd.isna(row["N"]) or row["N"] == 0:
+                labels.append("")
+            else:
+                labels.append(
+                    f"{int(row['Deaths'])}/{int(row['N'])}"
+                )
+
+        ax_c.bar_label(
+            container,
+            labels=labels,
+            padding=3,
+            fontsize=8
+        )
+
+    max_mortality = mortality_long["MortalityRate"].max(
+        skipna=True
+    )
+
+    if pd.notna(max_mortality) and max_mortality > 0:
+        ax_c.set_ylim(
+            top=max_mortality * 1.0
+        )
+    else:
+        ax_c.set_ylim(top=1)
+
+    # =====================================================
+    # COMMON STYLE
+    # =====================================================
+
+    for ax in [ax_a, ax_b, ax_c]:
+
+        sns.despine(
+            ax=ax,
+            top=True,
+            right=True
+        )
+
+        ax.grid(
+            axis="y",
+            linestyle="--",
+            linewidth=0.6,
+            alpha=0.35
+        )
+
+        ax.grid(
+            axis="x",
+            visible=False
+        )
+
+        ax.tick_params(
+            axis="both",
+            labelsize=10
+        )
+
     return fig
