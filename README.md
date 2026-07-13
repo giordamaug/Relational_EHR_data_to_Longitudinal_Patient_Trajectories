@@ -1,6 +1,6 @@
 # From Relational EHR Data to Longitudinal Patient Trajectories 
-The software and data in this repository is part of an ongoing activity aiming at developing a computational pipeline for the prediction of mortality due to compromised immune function for asplenic patients. 
-In this study the mortality prediction capability of a gradient boosting machine relying on ML embedding techniques for representing temporal causal dependences in clinical data from Electronic Health Records is assessed. 
+The software and data in this repository is part of an ongoing activity aiming at developing a computational pipeline for the prediction of mortality risk due to compromised immune function for asplenic patients. 
+In this study, the mortality risk prediction capability of a gradient boosting machine relying on ML embedding techniques for representing temporal causal dependencies in clinical data from Electronic Health Records is assessed. 
 
 ## Description
 
