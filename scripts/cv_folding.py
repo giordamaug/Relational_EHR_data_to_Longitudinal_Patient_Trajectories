@@ -97,18 +97,22 @@ def lgbm_cv(embedder_configs,
             y_train, y_valid = y_df.loc[train_idx].values.astype(np.float32).ravel(), y_df.loc[valid_idx].values.astype(np.float32).ravel()
             train_data = lgb.Dataset(train_df, label=y_train)
             valid_data = lgb.Dataset(test_df, label=y_valid)
-            with frame_log:
-                model = lgb.train(
-                    lgb_params,
-                    train_data,
-                    num_boost_round=1000,
-                    valid_sets=[valid_data],
-                    feval=mcc_eval,
-                    callbacks=[
-                        lgb.early_stopping(50),
-                        lgb.log_evaluation(0)
-                    ]
-                )
+            try:
+                with frame_log:
+                    model = lgb.train(
+                        lgb_params,
+                        train_data,
+                        num_boost_round=1000,
+                        valid_sets=[valid_data],
+                        feval=mcc_eval,
+                        callbacks=[
+                            lgb.early_stopping(50),
+                            lgb.log_evaluation(0)
+                        ]
+                    )
+            except Exception as e:
+                print(f"⚠️ Errore in LightGBM training: {e}")
+                raise Exception(f"⚠️ Errore in LightGBM training: {e}")
 
             y_pred = model.predict(test_df)
             y_pred_labels = (y_pred > threshold).astype(int)
