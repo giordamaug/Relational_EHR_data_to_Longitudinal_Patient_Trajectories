@@ -419,14 +419,19 @@ def DOMEEmbedder(sequences,
         )
     Xrisk.index = Xrisk.index.astype(int)
     Xembed_dome = Xrisk.loc[Xrisk.index.intersection([int(id) for id in all_idx])]
-    Xembed_dome.columns = [f"{col}_embed" for col in Xembed_dome.columns]
+    #Xembed_dome.columns = [f"{col}_embed" for col in Xembed_dome.columns]
     with frame_plot:
         print(f"✅ Embedding size {len(Xembed_dome.columns)}")
 
     train_df = pd.DataFrame(Xembed_dome.loc[train_idx], index=train_idx)
     test_df = pd.DataFrame(Xembed_dome.loc[valid_idx], index=valid_idx)
-    train_df.columns = [f"dome_{i}" for i in range(train_df.shape[1])]
-    test_df.columns = [f"dome_{i}" for i in range(test_df.shape[1])]
+    #newcols = [re.sub(r'[^A-Za-z0-9]+', '_', col) for col in Xembed_dome.columns]
+    train_df = rename_cols(train_df)
+    test_df = rename_cols(test_df)
+    #train_df.columns = [f"{col}" for col in newcols]
+    #test_df.columns = [f"{col}" for col in newcols]
+    #train_df.columns = [f"dome_{i}" for i in range(train_df.shape[1])]
+    #test_df.columns = [f"dome_{i}" for i in range(test_df.shape[1])]
     return train_df, test_df
 
 def StaticEmbedder(df,
@@ -441,7 +446,14 @@ def StaticEmbedder(df,
 import re
 def rename_cols(df):
     # Change columns names ([LightGBM] Do not support special JSON characters in feature name.)
-    new_names = {col: re.sub(r'[^A-Za-z0-9_]+', '', col) for col in df.columns}
+    #new_names = {col: re.sub(r'[^A-Za-z0-9_]+', '', col) for col in df.columns}
+    new_names = {
+        col: re.sub(
+            r'[^A-Za-z0-9_]+', '',
+            re.sub(r'[\s,]+', '_', col)
+        )
+        for col in df.columns
+    }
     new_n_list = list(new_names.values())
     # [LightGBM] Feature appears more than one time.
     new_names = {col: f'{new_col}_{i}' if new_col in new_n_list[:i] else new_col for i, (col, new_col) in enumerate(new_names.items())}
