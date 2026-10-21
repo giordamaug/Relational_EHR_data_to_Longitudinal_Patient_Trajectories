@@ -10,34 +10,89 @@ import itertools
 from sklearn.metrics import brier_score_loss
 
 # Radar plot
-def plot_radar(df, metrics):
-    N = len(metrics)
-    angles = np.linspace(0, 2*np.pi, N, endpoint=False).tolist()
-    angles += angles[:1]
+import matplotlib.pyplot as plt
+import numpy as np
 
-    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
 
-    for idx, row in df.iterrows():
-        values = row[metrics].tolist()
-        values += values[:1]
+def plot_radars(
+    dfm1,
+    dfm2,
+    method_styles,
+    titles=("plot 1", "plot 2"),
+    figsize=(16, 9),
+    width_ratios=(1.4, 0.6, 1.4),
+    legend_fontsize=10,
+):
+    """Plot two radar charts using fixed styles for each method."""
+    if list(dfm1.columns) != list(dfm2.columns):
+        raise ValueError("Both DataFrames must have the same columns in the same order.")
 
-        ax.plot(angles, values, linewidth=2, label=idx)
-        ax.fill(angles, values, alpha=0.1)
+    if not dfm1.index.is_unique or not dfm2.index.is_unique:
+        raise ValueError("Method names must be unique in each DataFrame.")
 
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(metrics, fontsize=11)
+    methods = list(dict.fromkeys([*dfm1.index, *dfm2.index]))
+    missing_styles = [method for method in methods if method not in method_styles]
+    if missing_styles:
+        raise ValueError(f"Missing styles for methods: {missing_styles}")
 
-    ax.set_ylim(0, 1)
-    ax.set_yticks(np.arange(0, 1.1, 0.1))
-    ax.set_yticklabels([f"{x:.1f}" for x in np.arange(0, 1.1, 0.1)])
+    plot_metrics = list(dfm1.columns)
+    if not plot_metrics:
+        raise ValueError("DataFrames must contain at least one metric.")
 
-    ax.grid(True)
-    #plt.title("Model Comparison Radar Plot", pad=20)
-    #ax.legend(loc='best')
-    plt.legend(loc="upper right", bbox_to_anchor=(0.75, 1))
-    plt.tight_layout()
+    angles = np.linspace(0, 2 * np.pi, len(plot_metrics), endpoint=False)
+    closed_angles = np.r_[angles, angles[0]]
+
+    fig = plt.figure(figsize=figsize)
+    grid = fig.add_gridspec(
+        1, 3,
+        width_ratios=width_ratios,
+        wspace=0.15,
+    )
+
+    ax_left = fig.add_subplot(grid[0, 0], projection="polar")
+    ax_legend = fig.add_subplot(grid[0, 1])
+    ax_right = fig.add_subplot(grid[0, 2], projection="polar")
+
+    ax_legend.axis("off")
+    axes = [ax_left, ax_right]
+    legend_handles = {}
+
+    for ax, df, title in zip(axes, [dfm1, dfm2], titles):
+        ax.set_theta_offset(np.pi / 2)
+        ax.set_theta_direction(-1)
+        ax.set_xticks(angles)
+        ax.set_xticklabels(plot_metrics)
+        ax.set_ylim(0, 1)
+        ax.set_title(title, pad=25)
+
+        for method in df.index:
+            values = df.loc[method, plot_metrics].to_numpy(dtype=float)
+            closed_values = np.r_[values, values[0]]
+
+            line, = ax.plot(
+                closed_angles,
+                closed_values,
+                linewidth=2,
+                label=method,
+                **method_styles[method],
+            )
+
+            legend_handles.setdefault(method, line)
+
+    ax_legend.legend(
+        [legend_handles[method] for method in methods],
+        methods,
+        loc="center",
+        ncol=1,
+        frameon=False,
+        fontsize=legend_fontsize,
+        handlelength=4,
+    )
+
+    fig.subplots_adjust(bottom=0.25, wspace=0.35)
     plt.show()
-    return fig
+
+    return fig, axes    
 
 def plot_group_distribution_with_event_boxplot(df, groupby="primary_disease_area", label_desc=None):
     df = df.copy()
@@ -175,7 +230,112 @@ def plot_heatmap(X_df, y_df, Xv_df, ):
     plt.gcf().legend(handles=legend_elements, title='Target class',
                     loc='upper center', bbox_to_anchor=(0.4, 0.5))
     plt.show()
-    
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+def plot_calibration_curves(
+    methods,
+    summary,
+    curves,
+    dataset,
+    bands=None,
+    show_ci_band=False,
+    figsize=(20, 11),
+    show=True,
+):
+    """Plot calibration curves with summary metrics and optional CI bands.
+
+    Args:
+        methods: Iterable of method component sequences joined with "+".
+        summary: Mapping from method names to metric DataFrames containing
+            "mean", "ci95_low", and "ci95_high" columns.
+        curves: Mapping from method names to (x, observed) pairs.
+        dataset: Dataset name displayed in the title.
+        bands: Optional mapping from method names to (x, low, high) CI arrays.
+        show_ci_band: Whether to display confidence interval bands.
+        figsize: Figure size in inches.
+        show: Whether to display the figure.
+
+    Returns:
+        A tuple containing the figure and axes.
+    """
+    if show_ci_band and bands is None:
+        raise ValueError("bands must be provided when show_ci_band=True.")
+
+    method_names = ["+".join(method) for method in methods]
+
+    def metric_label(stats, name, decimals):
+        row = stats.loc[name]
+        return (
+            f"{name} {row['mean']:.{decimals}f} "
+            f"[{row['ci95_low']:.{decimals}f}, "
+            f"{row['ci95_high']:.{decimals}f}]"
+        )
+
+    # Create labels before plotting
+    labels = {}
+    for method in method_names:
+        stats = summary[method]
+        labels[method] = (
+            f"{method}  |  "
+            f"{metric_label(stats, 'Intercept', 2)}  |  "
+            f"{metric_label(stats, 'Slope', 2)}  |  "
+            f"{metric_label(stats, 'Brier', 3)}"
+        )
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    ax.plot(
+        [0, 1], [0, 1],
+        "--", color="gray", label="Perfect calibration",
+    )
+    colors = [
+        "#1f77b4",  # Blue
+        "#ff7f0e",  # Orange
+        "#2ca02c",  # Green
+        "#d62728",  # Red
+        "#9467bd",  # Purple
+        "#8c564b",  # Brown
+    ]
+
+    line_styles = ["-", "--", ":", "-."]
+
+    for i, method in enumerate(method_names):
+        x, observed = curves[method]
+
+        color = colors[i % len(colors)]
+        linestyle = line_styles[(i // len(colors)) % len(line_styles)]
+
+        line, = ax.plot(
+            x, observed,
+            marker="o",
+            color=color,
+            linestyle=linestyle,
+            label=labels[method],
+        )
+
+        if show_ci_band:
+            band_x, low, high = (
+                np.asarray(values) for values in bands[method]
+            )
+            valid = (
+                np.isfinite(band_x)
+                & np.isfinite(low)
+                & np.isfinite(high)
+            )
+            ax.fill_between(
+                band_x[valid], low[valid], high[valid],
+                color=color,
+                alpha=0.18,
+            )
+    fig.tight_layout()
+
+    if show:
+        plt.show()
+
+    return fig, ax
 
 def plot_calibration(prob_pred, prob_true, all_runs, title="Calibration curves"):
 

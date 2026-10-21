@@ -10,7 +10,7 @@ from scipy.sparse import coo_matrix
 from collections import defaultdict
 import time
 import pandas as pd
-from tqdm.notebook import tqdm
+from tqdm.auto import tqdm
 import numpy as np
 from datetime import datetime
 import matplotlib.pyplot as plt
@@ -19,6 +19,10 @@ from sklearn.metrics import (
     matthews_corrcoef, confusion_matrix, accuracy_score, roc_auc_score,
     precision_score, recall_score, f1_score
 )
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+from sklearn.decomposition import TruncatedSVD
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score, log_loss
 from contextlib import nullcontext
 
 class BinaryFocalLoss(nn.Module):
@@ -86,6 +90,7 @@ def plot_foo(name, t_losses, v_losses, size=(7, 5)):
 #------------------------------------------------------------------------------------------------
 # DOME
 #------------------------------------------------------------------------------------------------
+
 def riskmatrix_loop_fb_dome(events, attributes, targets, emb1, emb2):
     attributes = [a.lower() for a in attributes]
     targets = [t.lower() for t in targets]
@@ -138,6 +143,10 @@ class DOME:
             C_plus += Cp_m
             C_minus += Cm_m
 
+        # Store earned parameters
+        self.W = W
+        self.C_plus = C_plus
+        self.C_minus = C_minus
         return W, C_plus.T, C_minus.T
     
 def compute_directional_ppmi(cooc_matrix, k=1):
@@ -269,175 +278,6 @@ class LSTMDataset(Dataset):
             y = self.labels[idx]
             return _id, x, y
         
-class LSTMModel(nn.Module):
-    def __init__(self, vocab_size, embed_dim, hidden_dim, pooling=False, name='LSTM'):
-        super().__init__()
-        self.name = name
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.pooling = pooling
-        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
-        self.lstm = nn.LSTM(embed_dim, hidden_dim, batch_first=True)
-        self.classifier = nn.Linear(hidden_dim, 1)
-
-    def forward(self, x):
-        embedded = self.embedding(x)
-        output, (hn, cn) = self.lstm(embedded)
-        feat = output.mean(dim=1) if self.pooling else hn.squeeze(0)
-        logits = self.classifier(feat)
-        return logits, feat
-
-    def train_model(self, 
-                    train_loader, 
-                    val_loader=None, 
-                    num_epochs=10, 
-                    lr=1e-3,
-                    enable_plot=False,
-                    frame_tqdm=None,
-                    frame_plot=None,
-                    plotsize=(4,5)):
-        
-        self.to(self.device)
-        optimizer = torch.optim.Adam(self.parameters(), lr=lr)
-        criterion = nn.BCEWithLogitsLoss()
-
-        train_losses, val_losses, val_aucs = [], [], []
-
-        with frame_tqdm:
-            frame_tqdm.clear_output(wait=True)
-            pbar = tqdm(range(num_epochs), total=num_epochs, desc=f'Training [{self.name}]')
-            for epoch in pbar:
-                # TRAINING
-                self.train()
-                total_loss = 0
-
-                for batch in train_loader:
-                    optimizer.zero_grad()
-                    if len(batch) == 3:
-                        ids, x, y = batch
-                        y = y.float().unsqueeze(1).to(self.device)
-                    elif len(batch) == 2:
-                        ids, x = batch
-                        y = None
-                    else:
-                        raise ValueError("Batch deve essere (id,x) o (id,x,y)")
-
-                    x = x.long().to(self.device)
-                    logits, _ = self(x)
-
-                    if y is not None:
-                        loss = criterion(logits, y)
-                        loss.backward()
-                        optimizer.step()
-                        total_loss += loss.item()
-
-                avg_train_loss = total_loss / len(train_loader) if total_loss > 0 else 0
-                train_losses.append(avg_train_loss)
-
-                # VALIDATION
-                if val_loader is not None:
-                    val_loss, auc = self.evaluate(val_loader)
-                    val_losses.append(val_loss)
-                    val_aucs.append(auc)
-                    
-                # PROGRESS BAR
-                if val_loader:
-                    pbar.set_postfix({'Train Loss': round(avg_train_loss,3), 'Val Loss': round(val_loss,3), 'AUC': round(auc,3)})
-                else:
-                    pbar.set_postfix({'Train Loss': round(avg_train_loss,3)})
-
-                # OPTIONAL PLOT
-                with frame_plot:
-                    plot_foo(self.name, train_losses, val_losses, size=plotsize) if enable_plot else None
-
-        return train_losses, val_losses
-
-    @torch.no_grad()
-    def evaluate(self, dataloader):
-        self.eval()
-        criterion = nn.BCEWithLogitsLoss()
-        total_loss = 0
-        preds, trues = [], []
-
-        for batch in dataloader:
-            if len(batch) == 3:
-                ids, x, y = batch
-                y = y.float().unsqueeze(1).to(self.device)
-            elif len(batch) == 2:
-                ids, x = batch
-                y = None
-            else:
-                raise ValueError("Batch deve essere (id,x) o (id,x,y)")
-
-            x = x.long().to(self.device)
-            logits, _ = self(x)
-
-            if y is not None:
-                loss = criterion(logits, y)
-                total_loss += loss.item()
-                probs = torch.sigmoid(logits).cpu().numpy()
-                preds.extend(probs)
-                trues.extend(y.cpu().numpy())
-
-        avg_loss = total_loss / len(dataloader) if total_loss > 0 else 0
-        try:
-            auc = roc_auc_score(trues, preds) if len(trues) > 0 else float("nan")
-        except:
-            auc = float("nan")
-
-        return avg_loss, auc
-    
-    @torch.no_grad()
-    def get_embeddings(self, dataloader):
-        """
-        Estrae gli embedding LSTM per ogni batch del dataloader.
-
-        Ritorna:
-            embeddings: np.array di shape (N, hidden_dim)
-            ids: np.array di shape (N,)
-        """
-        self.eval()
-        all_feats = []
-        all_ids = []
-
-        for batch in dataloader:
-            if len(batch) >= 2:
-                ids, x = batch[:2]
-            else:
-                raise ValueError("Batch deve avere almeno (id, x)")
-
-            x = x.long().to(self.device)
-            _, feats = self(x)  # (batch, hidden_dim)
-
-            all_feats.append(feats.cpu().numpy())
-            all_ids.extend(ids)
-
-        embeddings = np.vstack(all_feats)
-        ids_array = np.array(all_ids)
-
-        return embeddings, ids_array
-
-def bipadlstm_collate_fn(batch):
-
-    ids = []
-    sequences = []
-    labels = []
-    has_labels = len(batch[0]) == 3
-    for item in batch:
-        if has_labels:
-            i, seq, y = item
-            labels.append(y)
-        else:
-            i, seq = item
-        ids.append(i)
-        sequences.append(torch.tensor(seq))
-    lengths = torch.tensor([len(s) for s in sequences])
-    sequences = nn.utils.rnn.pad_sequence(
-        sequences,
-        batch_first=True,
-        padding_value=0
-    )
-    if has_labels:
-        labels = torch.tensor(labels)
 
 #------------------------------------------------------------------------------------------------
 # Flexible LSTM wih optional padding, bidirectional and attention
@@ -536,45 +376,45 @@ class FlexibleLSTMModel(nn.Module):
         train_losses, val_losses, val_aucs = [], [], []
         with frame_tqdm:
             frame_tqdm.clear_output(wait=True)
-            pbar = tqdm(range(num_epochs), total=num_epochs, desc=f'Training [{self.name}]')
-            for epoch in pbar:
-                self.train()
-                total_loss = 0
-                for batch in train_loader:
-                    optimizer.zero_grad()
-                    if len(batch) == 3:
-                        ids, x, y = batch
-                        y = y.float().unsqueeze(1).to(self.device)
-                    elif len(batch) == 2:
-                        ids, x = batch
-                        y = None
+            with tqdm(range(num_epochs),desc=f"Training [{self.name}]",position=1,leave=False,dynamic_ncols=True,) as pbar:
+                for epoch in pbar:
+                    self.train()
+                    total_loss = 0
+                    for batch in train_loader:
+                        optimizer.zero_grad()
+                        if len(batch) == 3:
+                            ids, x, y = batch
+                            y = y.float().unsqueeze(1).to(self.device)
+                        elif len(batch) == 2:
+                            ids, x = batch
+                            y = None
+                        else:
+                            raise ValueError("Batch deve essere (id,x) o (id,x,y)")
+                        x = x.long().to(self.device)
+                        logits, _ = self(x)
+                        if y is not None:
+                            loss = criterion(logits, y)
+                            loss.backward()
+                            optimizer.step()
+                            total_loss += loss.item()
+                    avg_train_loss = total_loss / len(train_loader) if total_loss > 0 else 0
+                    train_losses.append(avg_train_loss)
+
+                    if val_loader is not None:
+                        val_loss, auc = self.evaluate(val_loader)
+                        val_losses.append(val_loss)
+                        val_aucs.append(auc)
+                    if val_loader:
+                        pbar.set_postfix({
+                            'Train Loss': round(avg_train_loss,3),
+                            'Val Loss': round(val_loss,3),
+                            'AUC': round(auc,3)
+                        })
                     else:
-                        raise ValueError("Batch deve essere (id,x) o (id,x,y)")
-                    x = x.long().to(self.device)
-                    logits, _ = self(x)
-                    if y is not None:
-                        loss = criterion(logits, y)
-                        loss.backward()
-                        optimizer.step()
-                        total_loss += loss.item()
-                avg_train_loss = total_loss / len(train_loader) if total_loss > 0 else 0
-                train_losses.append(avg_train_loss)
+                        pbar.set_postfix({'Train Loss': round(avg_train_loss,3)})
 
-                if val_loader is not None:
-                    val_loss, auc = self.evaluate(val_loader)
-                    val_losses.append(val_loss)
-                    val_aucs.append(auc)
-                if val_loader:
-                    pbar.set_postfix({
-                        'Train Loss': round(avg_train_loss,3),
-                        'Val Loss': round(val_loss,3),
-                        'AUC': round(auc,3)
-                    })
-                else:
-                    pbar.set_postfix({'Train Loss': round(avg_train_loss,3)})
-
-                with frame_plot:
-                    plot_foo(self.name, train_losses, val_losses, size=plotsize) if enable_plot else None
+                    with frame_plot:
+                        plot_foo(self.name, train_losses, val_losses, size=plotsize) if enable_plot else None
         return train_losses, val_losses
 
     @torch.no_grad()
@@ -657,379 +497,26 @@ class FlexibleLSTMModel(nn.Module):
         return torch.cat(all_probs, dim=0)
 
     @torch.no_grad()
-    def predict(self, dataloader):
+    def predict(self, dataloader,threshold=0.5):
         probs = self.predict_proba(dataloader)
-        preds = torch.argmax(probs, dim=1)
+        # ----------------------------
+        # BINARIO
+        # ----------------------------
+        if probs.shape[1] == 2:
+            prob_pos = probs[:, 1]
+
+            if not (0.0 <= threshold <= 1.0):
+                raise ValueError("threshold must be in [0,1]")
+
+            preds = (prob_pos >= threshold).long()
+
+        # ----------------------------
+        # MULTICLASS (fallback)
+        # ----------------------------
+        else:
+            preds = torch.argmax(probs, dim=1)
         return preds, probs   
        
-#------------------------------------------------------------------------------------------------
-# RETAIN
-#------------------------------------------------------------------------------------------------
-class AverageMeter(object):
-    """Computes and stores the average and current value"""
-
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-    
-
-class RETAINDataset(Dataset):
-    def __init__(self, seqs, labels, num_features, reverse=True, create_dummy=True, name='RETAIN'):
-        """
-        Args:
-            seqs (list): list of patients (list) of visits (list) of codes (int)
-            labels (list): list of labels (int)
-            num_features (int): number of total features available
-            reverse (bool): If true, reverse order of visits for RETAIN
-            create_dummy (bool): If True, replace empty sequences with one dummy visit of zeros
-        """
-        self.name = name
-        if len(seqs) != len(labels):
-            raise ValueError("Seqs and Labels have different lengths")
-
-        self.seqs = []
-        self.labels = [int(l) for l in labels]
-        self.num_features = num_features
-        self.reverse = reverse
-        self.create_dummy = create_dummy
-
-        for seq, label in zip(seqs, labels):
-            if self.reverse:
-                sequence = list(reversed(seq))
-            else:
-                sequence = list(seq)
-
-            # Se la sequenza è vuota -> crea una visita dummy (riga di zeri)
-            if len(sequence) == 0:
-                if self.create_dummy:
-                    # coo_matrix con shape (1, num_features) e nessun valore -> riga di zeri
-                    mat = coo_matrix(([], ([], [])), shape=(1, num_features), dtype=np.float32)
-                else:
-                    # lascia come matrice di 0 righe (attenzione: può causare problemi a monte)
-                    mat = coo_matrix(([], ([], [])), shape=(0, num_features), dtype=np.float32)
-            else:
-                rows = []
-                cols = []
-                vals = []
-                for i, visit in enumerate(sequence):
-                    # visit è una lista di codici (int), se usi eventi con pesi adatta vals
-                    for code in visit:
-                        if code < num_features:
-                            rows.append(i)
-                            cols.append(code)
-                            vals.append(1.0)
-                if len(vals) == 0:
-                    # tutte le visite erano vuote -> crea comunque righe (len(sequence) righe) tutte zero
-                    mat = coo_matrix(([], ([], [])), shape=(len(sequence), num_features), dtype=np.float32)
-                else:
-                    mat = coo_matrix((np.array(vals, dtype=np.float32),
-                                      (np.array(rows, dtype=np.int32), np.array(cols, dtype=np.int32))),
-                                     shape=(len(sequence), num_features),
-                                     dtype=np.float32)
-            # convert to CSR for faster row-slicing in collate / model if needed
-            self.seqs.append(mat.tocsr())
-
-    def __len__(self):
-        return len(self.labels)
-
-    def __getitem__(self, index):
-        # ritorna (csr_matrix, label)
-        return self.seqs[index], self.labels[index]
-
-
-def visit_collate_fn(batch):
-    """
-    DataLoaderIter call - self.collate_fn([self.dataset[i] for i in indices])
-    Thus, 'batch' is a list [(seq1, label1), (seq2, label2), ... , (seqN, labelN)]
-    where N is minibatch size, seq is a SparseFloatTensor, and label is a LongTensor
-
-    :returns
-        seqs
-        labels
-        lengths
-    """
-    batch_seq, batch_label = zip(*batch)
-
-    num_features = batch_seq[0].shape[1]
-    seq_lengths = list(map(lambda patient_tensor: patient_tensor.shape[0], batch_seq))
-    max_length = max(seq_lengths)
-
-    sorted_indices, sorted_lengths = zip(*sorted(enumerate(seq_lengths), key=lambda x: x[1], reverse=True))
-    sorted_padded_seqs = []
-    sorted_labels = []
-
-    for i in sorted_indices:
-        length = batch_seq[i].shape[0]
-
-        if length < max_length:
-            padded = np.concatenate(
-                (batch_seq[i].toarray(), np.zeros((max_length - length, num_features), dtype=np.float32)), axis=0)
-        else:
-            padded = batch_seq[i].toarray()
-
-        sorted_padded_seqs.append(padded)
-        sorted_labels.append(batch_label[i])
-
-    seq_tensor = np.stack(sorted_padded_seqs, axis=0)
-    label_tensor = torch.tensor(sorted_labels, dtype=torch.long)
-
-    return torch.from_numpy(seq_tensor), label_tensor, list(sorted_lengths)
-   
-class RETAINModel(nn.Module):
-    def __init__(self, dim_input, dim_emb=128, dropout_input=0.8, dropout_emb=0.5, dim_alpha=128, dim_beta=128,
-                    dropout_context=0.5, dim_output=2, l2=0.0001, batch_first=True, name='RETAIN'):
-        super(RETAINModel, self).__init__()
-        self.name = name
-        self.embed_size = dim_emb
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.batch_first = batch_first
-        self.embedding = nn.Sequential(
-            nn.Dropout(p=dropout_input),
-            nn.Linear(dim_input, dim_emb, bias=False),
-            nn.Dropout(p=dropout_emb)
-        )
-        init.xavier_normal(self.embedding[1].weight)
-
-        self.rnn_alpha = nn.GRU(input_size=dim_emb, hidden_size=dim_alpha, num_layers=1, batch_first=self.batch_first)
-
-        self.alpha_fc = nn.Linear(in_features=dim_alpha, out_features=1)
-        init.xavier_normal(self.alpha_fc.weight)
-        self.alpha_fc.bias.data.zero_()
-
-        self.rnn_beta = nn.GRU(input_size=dim_emb, hidden_size=dim_beta, num_layers=1, batch_first=self.batch_first)
-
-        self.beta_fc = nn.Linear(in_features=dim_beta, out_features=dim_emb)
-        init.xavier_normal(self.beta_fc.weight, gain=nn.init.calculate_gain('tanh'))
-        self.beta_fc.bias.data.zero_()
-
-        self.output = nn.Sequential(
-            nn.Dropout(p=dropout_context),
-            nn.Linear(in_features=dim_emb, out_features=dim_output)
-        )
-        init.xavier_normal(self.output[1].weight)
-        self.output[1].bias.data.zero_()
-
-
-    def forward(self, x, lengths):
-        if self.batch_first:
-            batch_size, max_len = x.size()[:2]
-        else:
-            max_len, batch_size = x.size()[:2]
-
-        # emb -> batch_size X max_len X dim_emb
-        emb = self.embedding(x)
-
-        packed_input = pack_padded_sequence(emb, lengths, batch_first=self.batch_first)
-
-        g, _ = self.rnn_alpha(packed_input)
-
-        # alpha_unpacked -> batch_size X max_len X dim_alpha
-        alpha_unpacked, _ = pad_packed_sequence(g, batch_first=self.batch_first)
-
-        # mask -> batch_size X max_len X 1
-        mask = Variable(torch.FloatTensor(
-            [[1.0 if i < lengths[idx] else 0.0 for i in range(max_len)] for idx in range(batch_size)]).unsqueeze(2),
-                        requires_grad=False)
-        if next(self.parameters()).is_cuda:  # returns a boolean
-            mask = mask.cuda()
-
-        # e => batch_size X max_len X 1
-        e = self.alpha_fc(alpha_unpacked)
-
-        def masked_softmax(batch_tensor, mask):
-            exp = torch.exp(batch_tensor)
-            masked_exp = exp * mask
-            sum_masked_exp = torch.sum(masked_exp, dim=1, keepdim=True)
-            return masked_exp / sum_masked_exp
-
-        # Alpha = batch_size X max_len X 1
-        # alpha value for padded visits (zero) will be zero
-        alpha = masked_softmax(e, mask)
-
-        h, _ = self.rnn_beta(packed_input)
-
-        # beta_unpacked -> batch_size X max_len X dim_beta
-        beta_unpacked, _ = pad_packed_sequence(h, batch_first=self.batch_first)
-
-        # Beta -> batch_size X max_len X dim_emb
-        # beta for padded visits will be zero-vectors
-        #beta = F.tanh(self.beta_fc(beta_unpacked) * mask)
-        beta = torch.tanh(self.beta_fc(beta_unpacked) * mask)
-
-        # context -> batch_size X (1) X dim_emb (squeezed)
-        # Context up to i-th visit context_i = sum(alpha_j * beta_j * emb_j)
-        # Vectorized sum
-        context = torch.bmm(torch.transpose(alpha, 1, 2), beta * emb).squeeze(1)
-
-        # without applying non-linearity
-        logit = self.output(context)
-
-        return logit, alpha, beta
-
-    def train_model(self, 
-                    train_loader, 
-                    val_loader=None,
-                    num_epochs=10, 
-                    enable_plot=False, 
-                    frame_tqdm=None,
-                    frame_plot=None,plotsize=(4,3),
-                    ):
-        """
-        Unsupervised training to stabilize embedding space (MSE to zero)
-        """
-        self.to(self.device)
-
-        optimizer = torch.optim.SGD(self.parameters(), lr=0.001, momentum=0.95)
-        criterion = nn.CrossEntropyLoss()
-
-        train_losses = []
-        val_losses = []
-
-        train_loss = 0
-        val_loss = 0
-
-        with frame_tqdm:
-            frame_tqdm.clear_output(wait=True)
-            pbar = tqdm(range(num_epochs), total=num_epochs, desc=f'Training [{self.name}]')
-            for epoch in pbar:
-                # TRAINING
-                self.train()
-                losses = AverageMeter()
-                train_labels = []
-                train_outputs = []
-
-                for batch in train_loader:
-                    inputs, targets, lengths = batch
-
-                    input_var  = inputs.to(self.device)
-                    target_var = targets.long().to(self.device).view(-1)
-                    output, alpha, beta = self(input_var, lengths)
-                    loss = criterion(output, target_var)
-                    assert not np.isnan(loss.item()), "Model diverged with loss = NaN"
-
-                    # log per metriche
-                    train_labels.append(targets)
-                    train_outputs.append(F.softmax(output, dim=1).data)
-
-                    # update loss
-                    losses.update(loss.item(), inputs.size(0))
-
-                    # backward
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
-
-                train_loss = losses.avg
-                train_losses.append(train_loss)
-
-                train_y_true = torch.cat(train_labels, 0).cpu().numpy()
-                train_y_pred = torch.cat(train_outputs, 0).cpu().numpy()
-                
-                # VALIDATION
-                if val_loader:
-                    self.eval()
-                    val_losses_meter = AverageMeter()
-                    valid_labels = []
-                    valid_outputs = []
-
-                    with torch.no_grad():
-                        for batch in val_loader:
-                            inputs, targets, lengths = batch
-
-                            input_var  = inputs.to(self.device)
-                            target_var = targets.to(self.device).view(-1)
-
-                            output, alpha, beta = self(input_var, lengths)
-                            loss = criterion(output, target_var)
-                            val_losses_meter.update(loss.item(), inputs.size(0))
-
-                            valid_labels.append(targets)
-                            valid_outputs.append(F.softmax(output, dim=1).data)
-
-                    val_loss = val_losses_meter.avg
-                    val_losses.append(val_loss)
-
-                    # AUROC
-                    try:
-                        y_true = torch.cat(valid_labels).numpy()
-                        y_pred = torch.cat(valid_outputs).numpy()
-                        auc = roc_auc_score(y_true, y_pred)
-                    except:
-                        auc = float("nan")
-                        
-                # PROGRESS BAR
-                if val_loader:
-                    pbar.set_postfix({'Train Loss': round(train_loss,3), 'Val Loss': round(val_loss,3), 'AUC': round(auc,3)})
-                else:
-                    pbar.set_postfix({'Train Loss': round(train_loss,3)})
-
-                # PLOT (opzional)
-                with frame_plot:
-                    plot_foo(self.name, train_losses, val_losses, size=plotsize) if enable_plot else None
-
-        return train_losses
-
-    def get_embeddings_input(self, x):
-        """
-        Return the patient-level embedding vector before the final classification layer.
-        x: (batch, seq_len, dim_input)
-        """
-        # x → embedding
-        e = self.embedding(x)   # (batch, seq_len, dim_emb)
-        e_rev = torch.flip(e, [1])
-
-        # ---- α attention ----
-        g, _ = self.rnn_alpha(e_rev)  # (batch, seq_len, dim_alpha)
-        alpha_logits = self.alpha_fc(g)  # (batch, seq_len, 1)
-        alpha_weights = torch.softmax(alpha_logits, dim=1)  # (batch, seq_len, 1)
-
-        # ---- β attention ----
-        h, _ = self.rnn_beta(e_rev)  # (batch, seq_len, dim_beta)
-        beta = torch.tanh(self.beta_fc(h))  # (batch, seq_len, dim_emb)
-
-        # ---- patient representation ----
-        c = torch.sum(alpha_weights * beta * e_rev, dim=1)  # (batch, dim_emb)
-
-        return c
-
-    def get_embeddings(self, loader):
-        #self.eval()
-        all_embeds = np.empty(shape=(0,self.embed_size))
-        all_ids = []
-
-        with torch.no_grad():
-            for batch in loader:
-                # Gestione batch con o senza IDs
-                if len(batch) == 4:
-                    inputs, targets, lengths, ids = batch
-                elif len(batch) == 3:
-                    inputs, targets, lengths = batch
-                    ids = list(range(len(inputs)))
-                else:
-                    raise ValueError(f"Unexpected batch length: {len(inputs)}")
-
-                inputs = inputs.to(self.device)
-                embeds = self.get_embeddings_input(inputs)  # (batch, dim_emb)
-
-                all_embeds = np.concatenate((all_embeds,embeds.cpu().numpy()), axis=0)
-                #all_embeds.append(embeds.cpu())
-                all_ids.extend(ids)
-
-        # Concatena i batch in un unico array 2D
-        #all_embeds = torch.cat(all_embeds, dim=0).numpy()
-        return all_embeds, np.array(all_ids)
-        
 #------------------------------------------------------------------------------------------------
 # CEHR-BERT
 #------------------------------------------------------------------------------------------------
@@ -1209,6 +696,7 @@ class CEHRBERTModel(nn.Module):
         vocab_size,
         embed_dim=128,
         hidden_dim=128,
+        patient_dim=128,
         num_heads=4,
         num_layers=2,
         max_len=512,
@@ -1239,6 +727,9 @@ class CEHRBERTModel(nn.Module):
         else:
             self.type_embedding = None
 
+        # -----------------------------------------
+        # EVENT ENCODER
+        # -----------------------------------------
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=embed_dim,
             nhead=num_heads,
@@ -1253,6 +744,9 @@ class CEHRBERTModel(nn.Module):
             num_layers=num_layers
         )
 
+        # -----------------------------------------
+        # POOLING
+        # -----------------------------------------
         if pooling == "attention":
             self.attention = nn.Sequential(
                 nn.Linear(embed_dim, hidden_dim),
@@ -1260,8 +754,21 @@ class CEHRBERTModel(nn.Module):
                 nn.Linear(hidden_dim, 1),
             )
 
+        # -----------------------------------------
+        # PATIENT EMBEDDING
+        # -----------------------------------------
+
+        self.patient_dim = patient_dim
+
+        self.patient_projection = nn.Linear(embed_dim,patient_dim)
+
+        # -----------------------------------------
+        # CLASSIFICATION
+        # -----------------------------------------
+
         self.dropout = nn.Dropout(dropout)
-        self.classifier = nn.Linear(embed_dim, 1)
+        self.classifier = nn.Linear(patient_dim,1)
+        self.classifier = nn.Linear(patient_dim, 1)
 
     def forward(self, input_ids, attention_mask=None, token_types=None):
         batch_size, seq_len = input_ids.shape
@@ -1270,6 +777,9 @@ class CEHRBERTModel(nn.Module):
         positions = torch.arange(seq_len, device=device).unsqueeze(0)
         positions = positions.expand(batch_size, seq_len)
 
+        # -----------------------------------------
+        # EVENT EMBEDDING
+        # -----------------------------------------
         x = self.token_embedding(input_ids)
         x = x + self.position_embedding(positions)
 
@@ -1281,13 +791,30 @@ class CEHRBERTModel(nn.Module):
 
         key_padding_mask = attention_mask == 0
 
+        # -----------------------------------------
+        # TRANSFORMER ENCODER
+        # -----------------------------------------
         encoded = self.encoder(
             x,
             src_key_padding_mask=key_padding_mask
         )
 
-        patient_embedding = self.pool(encoded, attention_mask)
-        logits = self.classifier(self.dropout(patient_embedding)).view(-1)
+        # -----------------------------------------
+        # POOLING
+        # -----------------------------------------
+        pooled = self.pool(encoded, attention_mask)
+
+        # -----------------------------------------
+        # PATIENT EMBEDDING PROJECTION
+        # -----------------------------------------
+        patient_embedding = self.patient_projection(pooled)
+
+        # -----------------------------------------
+        # CLASSIFICATION
+        # -----------------------------------------
+        logits = self.classifier(
+            self.dropout(patient_embedding)
+        ).view(-1)
 
         return logits, patient_embedding
 
@@ -1335,17 +862,9 @@ class CEHRBERTModel(nn.Module):
 
         train_losses, val_losses, val_aucs = [], [], []
 
-        context = frame_tqdm if frame_tqdm is not None else nullcontext()
-
-        with context:
+        with tqdm(range(num_epochs),desc=f"Training [{self.name}]",position=1,leave=False,dynamic_ncols=True,) as pbar:
             if frame_tqdm is not None:
                 frame_tqdm.clear_output(wait=True)
-
-            pbar = tqdm(
-                range(num_epochs),
-                total=num_epochs,
-                desc=f"Training [{self.name}]"
-            )
 
             for epoch in pbar:
                 self.train()
@@ -1832,17 +1351,36 @@ class GRUModel(nn.Module):
     def forward(self, x):
         embedded = self.embedding(x)
         output, hn = self.gru(embedded)
+        # ----------------------------------
+        # PATIENT EMBEDDING
+        # ----------------------------------
         if self.pooling == "mean":
-            pooled = output.mean(dim=1)
+            mask = (x != 0).unsqueeze(-1).float()
+            patient_embedding = ((output * mask).sum(dim=1)/mask.sum(dim=1).clamp(min=1))
+        if self.pooling == "mean":
+            patient_embedding = output.mean(dim=1)
         elif self.pooling == "last":
-            pooled = hn.squeeze(0)
+            patient_embedding = hn.squeeze(0)
         elif self.pooling == "max":
-            pooled = output.max(dim=1).values
+            mask = (x != 0).unsqueeze(-1)
+            masked_output = output.masked_fill(~mask,torch.finfo(output.dtype).min)
+            patient_embedding = masked_output.max(dim=1).values
+        elif self.pooling == "attention":
+            mask = (x != 0)
+            scores = self.attention(output).squeeze(-1)
+            scores = scores.masked_fill(~mask,torch.finfo(scores.dtype).min)
+            weights = torch.softmax(scores, dim=1)
+            patient_embedding = torch.sum(output * weights.unsqueeze(-1),dim=1)
         else:
-            raise ValueError(f"Pooling {self.pooling} non supportato")
-        logits = self.fc_out(pooled)  # proietto su 1 dimensione
-        return logits
-        
+            raise ValueError(
+                f"Pooling {self.pooling} non supportato"
+            )
+        # ----------------------------------
+        # CLASSIFICATION
+        # ----------------------------------
+        logits = self.fc_out(patient_embedding)
+        return logits, patient_embedding
+          
     def train_model(self, 
                     train_loader, 
                     val_loader=None, 
@@ -1858,46 +1396,46 @@ class GRUModel(nn.Module):
 
         with frame_tqdm:
             frame_tqdm.clear_output(wait=True)
-            pbar = tqdm(range(num_epochs), total=num_epochs, desc=f'Training [{self.name}]')
-            for epoch in pbar:
-                self.train()
-                total_loss = 0
+            with tqdm(range(num_epochs),desc=f"Training [{self.name}]",position=1,leave=False,dynamic_ncols=True,) as pbar:
+                for epoch in pbar:
+                    self.train()
+                    total_loss = 0
 
-                for batch in train_loader:
-                    optimizer.zero_grad()
-                    # Batch può essere (id, x) o (id, x, y)
-                    if len(batch) == 3:
-                        ids, x, y = batch
-                        y = y.float().unsqueeze(1).to(self.device)
-                    elif len(batch) == 2:
-                        ids, x = batch
-                        y = None
+                    for batch in train_loader:
+                        optimizer.zero_grad()
+                        # Batch può essere (id, x) o (id, x, y)
+                        if len(batch) == 3:
+                            ids, x, y = batch
+                            y = y.float().unsqueeze(1).to(self.device)
+                        elif len(batch) == 2:
+                            ids, x = batch
+                            y = None
+                        else:
+                            raise ValueError("Batch deve essere (id,x) o (id,x,y)")
+
+                        x = x.long().to(self.device)
+                        logits,_ = self.forward(x)
+
+                        if y is not None:
+                            loss = criterion(logits, y)
+                            loss.backward()
+                            optimizer.step()
+                            total_loss += loss.item()
+
+                    train_loss = total_loss / len(train_loader) if total_loss > 0 else 0
+                    train_losses.append(train_loss)
+
+                    # VALIDATION
+                    if val_loader is not None:
+                        val_loss, val_auc = self.evaluate(val_loader)
+                        val_losses.append(val_loss)
+                        val_aucs.append(val_auc)
+                        pbar.set_postfix({'Train Loss': round(train_loss,3), 'Val Loss': round(val_loss,3), 'AUC': round(val_auc,3)})
                     else:
-                        raise ValueError("Batch deve essere (id,x) o (id,x,y)")
+                        pbar.set_postfix({'Train Loss': round(train_loss,3)})
 
-                    x = x.long().to(self.device)
-                    logits = self.forward(x)
-
-                    if y is not None:
-                        loss = criterion(logits, y)
-                        loss.backward()
-                        optimizer.step()
-                        total_loss += loss.item()
-
-                train_loss = total_loss / len(train_loader) if total_loss > 0 else 0
-                train_losses.append(train_loss)
-
-                # VALIDATION
-                if val_loader is not None:
-                    val_loss, val_auc = self.evaluate(val_loader)
-                    val_losses.append(val_loss)
-                    val_aucs.append(val_auc)
-                    pbar.set_postfix({'Train Loss': round(train_loss,3), 'Val Loss': round(val_loss,3), 'AUC': round(val_auc,3)})
-                else:
-                    pbar.set_postfix({'Train Loss': round(train_loss,3)})
-
-                with frame_plot:
-                    plot_foo(self.name, train_losses, val_losses, size=plotsize) if enable_plot else None
+                    with frame_plot:
+                        plot_foo(self.name, train_losses, val_losses, size=plotsize) if enable_plot else None
 
         return train_losses, val_losses, val_aucs
 
@@ -1919,7 +1457,7 @@ class GRUModel(nn.Module):
                 raise ValueError("Batch deve essere (id,x) o (id,x,y)")
 
             x = x.long().to(self.device)
-            logits = self.forward(x)
+            logits,_ = self.forward(x)
 
             if y is not None:
                 loss = criterion(logits, y)
@@ -1950,8 +1488,8 @@ class GRUModel(nn.Module):
                 raise ValueError("Batch deve essere (id,x) o (id,x,y)")
 
             x = x.long().to(self.device)
-            logits = self.forward(x)
-
+            logits,_ = self.forward(x)
+            
             # 🔹 Binary case (BCEWithLogitsLoss)
             if logits.shape[1] == 1:
                 prob_pos = torch.sigmoid(logits)                  # (batch, 1)
@@ -1966,327 +1504,47 @@ class GRUModel(nn.Module):
         return torch.cat(all_probs, dim=0)
 
     @torch.no_grad()
-    def predict(self, dataloader):
+    def predict(self, dataloader,threshold=0.5):
         probs = self.predict_proba(dataloader)
-        preds = torch.argmax(probs, dim=1)
+        # ----------------------------
+        # BINARIO
+        # ----------------------------
+        if probs.shape[1] == 2:
+            prob_pos = probs[:, 1]
+
+            if not (0.0 <= threshold <= 1.0):
+                raise ValueError("threshold must be in [0,1]")
+
+            preds = (prob_pos >= threshold).long()
+
+        # ----------------------------
+        # MULTICLASS (fallback)
+        # ----------------------------
+        else:
+            preds = torch.argmax(probs, dim=1)
         return preds, probs  
     
     @torch.no_grad()
     def get_embeddings(self, dataloader):
-        """
-        Restituisce embeddings e ids come array numpy
-        """
         self.eval()
-        all_feats, all_ids = [], []
+        all_feats = []
+        all_ids = []
 
         for batch in dataloader:
             if len(batch) >= 2:
                 ids, x = batch[:2]
             else:
                 raise ValueError("Batch deve avere almeno (id,x)")
-
             x = x.long().to(self.device)
-            feats = self.forward(x)
+
+            # Estrai il patient embedding
+            _, feats = self.forward(x)
             all_feats.append(feats.cpu().numpy())
             all_ids.extend(ids)
-
         embeddings = np.vstack(all_feats)
         ids_array = np.array(all_ids)
         return embeddings, ids_array
 
-#------------------------------------------------------------------------------------------------
-# GRU-D
-#------------------------------------------------------------------------------------------------
-def grud_collate_fn(batch):
-    """
-    Collate function per GRU-D con padding dinamico.
-    Funziona sia per dataset con labels che senza.
-    """
-    # controlla se il primo elemento ha labels (5 elementi totali)
-    has_labels = len(batch[0]) == 5
-
-    if has_labels:
-        xs, ms, deltas, labels, ids = zip(*batch)
-    else:
-        xs, ms, deltas, ids = zip(*batch)
-        labels = None
-
-    xs_padded = pad_sequence(xs, batch_first=True, padding_value=0.0)
-    ms_padded = pad_sequence(ms, batch_first=True, padding_value=0.0)
-    deltas_padded = pad_sequence(deltas, batch_first=True, padding_value=0.0)
-
-    if labels is not None:
-        labels = torch.tensor(labels, dtype=torch.long)
-        return xs_padded, ms_padded, deltas_padded, labels, ids
-    else:
-        return xs_padded, ms_padded, deltas_padded, ids
-    
-class GRUDDataset(Dataset):
-    def __init__(self, patient_dict, code2id=None, labels_dict=None, max_seq_len=50):
-        """
-        patient_dict: {pid: [( [event1, event2, ...], 'YYYY-MM-DD'), ...]}
-        code2id: dict evento → indice intero
-        labels_dict: opzionale {pid: 0/1/...}
-        """
-        self.patient_ids = list(patient_dict.keys())
-        self.data = patient_dict
-        self.labels = labels_dict
-        if code2id is None:
-            all_events = set()
-            for visits in patient_dict.values():
-                for events, _ in visits:
-                    all_events.update(events)
-            self.code2id = {code: idx+1 for idx, code in enumerate(sorted(all_events))}
-            self.code2id["<PAD>"] = 0
-        else:
-            self.code2id = code2id
-        self.max_seq_len = max_seq_len
-        self.input_size = len(code2id)
-
-        # Calcolo media feature per imputazione GRU-D
-        self.feature_means = np.zeros(self.input_size, dtype=np.float32)
-        counts = np.zeros(self.input_size, dtype=np.float32)
-        for visits in patient_dict.values():
-            for events, _ in visits:
-                for ev in events:
-                    if ev in code2id:
-                        idx = code2id[ev]
-                        self.feature_means[idx] += 1
-                        counts[idx] += 1
-        counts[counts == 0] = 1
-        self.feature_means /= counts
-
-    def __len__(self):
-        return len(self.patient_ids)
-
-    def __getitem__(self, idx):
-        pid = self.patient_ids[idx]
-        visits = self.data[pid]
-
-        # Ordina per data
-        visits = sorted(visits, key=lambda x: x[1])
-
-        x = np.zeros((self.max_seq_len, self.input_size), dtype=np.float32)
-        m = np.zeros_like(x)
-        delta = np.zeros_like(x)
-        timestamps = []
-
-        for t, (events, date_str) in enumerate(visits[:self.max_seq_len]):
-            for ev in events:
-                if ev in self.code2id:
-                    eid = self.code2id[ev]
-                    x[t, eid] = 1.0
-                    m[t, eid] = 1.0
-            try:
-                timestamps.append(datetime.strptime(date_str, "%Y-%m-%d"))
-            except:
-                timestamps.append(datetime.now())  # fallback se data mancante
-
-        # Calcolo delta temporali
-        if len(timestamps) > 0:
-            for d in range(self.input_size):
-                last_time = timestamps[0]
-                for t in range(1, len(timestamps)):
-                    if m[t-1, d] == 1:
-                        last_time = timestamps[t-1]
-                    delta[t, d] = (timestamps[t] - last_time).days
-
-        x_tensor = torch.tensor(x, dtype=torch.float32)
-        m_tensor = torch.tensor(m, dtype=torch.float32)
-        delta_tensor = torch.tensor(delta, dtype=torch.float32)
-
-        if self.labels is not None and pid in self.labels:
-            y = torch.tensor(self.labels[pid], dtype=torch.long)
-            return x_tensor, m_tensor, delta_tensor, y, pid
-        else:
-            return x_tensor, m_tensor, delta_tensor, pid
-
-class GRUDModel(nn.Module):
-    def __init__(self, input_size, hidden_size=64, output_size=2, x_mean=None, dropout=0.5, name='GRU-D'):
-        super().__init__()
-        self.name = name
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.output_size = output_size
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.x_mean = torch.tensor(x_mean, dtype=torch.float32) if x_mean is not None else torch.zeros(input_size)
-
-        # GRU-D
-        self.gru_cell = nn.GRUCell(input_size * 2, hidden_size)  # x_hat concatenato con mask
-        self.dropout = nn.Dropout(dropout)
-        self.fc = nn.Linear(hidden_size, output_size)
-
-    def forward(self, x, m, delta):
-        batch_size, seq_len, input_size = x.size()
-        h = torch.zeros(batch_size, self.hidden_size, device=x.device)
-
-        # imputazione x_hat con feature mean
-        x_hat = m * x + (1 - m) * self.x_mean.to(x.device)
-
-        for t in range(seq_len):
-            x_t_hat = x_hat[:, t, :]
-            m_t = m[:, t, :]
-            gru_input = torch.cat([x_t_hat, m_t], dim=1)
-            h = self.gru_cell(gru_input, h)
-
-        h = self.dropout(h)
-        out = self.fc(h)
-        return out
-
-    def train_model(self, 
-                    dataloader, 
-                    val_loader=None, 
-                    num_epochs=10, 
-                    lr=1e-3, enable_plot=False,
-                    frame_tqdm=None,
-                    frame_plot=None,plotsize=(4,3)):
-        
-        self.to(self.device)
-        optimizer = torch.optim.Adam(self.parameters(), lr=lr)
-        criterion = nn.CrossEntropyLoss()
-
-        train_losses = []
-        val_losses = []
-        train_loss = 0
-        with frame_tqdm:
-            frame_tqdm.clear_output(wait=True)
-            pbar = tqdm(range(num_epochs), total=num_epochs, desc=f'Training [{self.name}]')
-            for epoch in pbar:
-                self.train()
-                epoch_loss = 0
-                #pbar = tqdm(dataloader, desc=f"[GRU-D] Epoch {epoch+1}/{num_epochs} Loss {avg_loss:.4f}")
-                for batch in dataloader:
-                    if len(batch) == 5:
-                        x, m, delta, y, _ = batch
-                        y = y.to(self.device)
-                    else:
-                        continue  # skip test batches
-
-                    x, m, delta = x.to(self.device).float(), m.to(self.device).float(), delta.to(self.device).float()
-
-                    optimizer.zero_grad()
-                    logits = self(x, m, delta)
-                    loss = criterion(logits, y)
-                    loss.backward()
-                    optimizer.step()
-
-                    epoch_loss += loss.item()
-                train_loss = epoch_loss / len(dataloader)
-                train_losses.append(train_loss)
-                
-                # VALIDATION
-                if val_loader is not None:
-                    self.eval()
-                    val_total_loss = 0
-                    all_true = []
-                    all_pred = []
-
-                    with torch.no_grad():
-                        for batch in val_loader:
-                            # skip test batches
-                            if len(batch) != 5:
-                                continue
-
-                            x, m, delta, y, _ = batch
-                            x = x.to(self.device).float()
-                            m = m.to(self.device).float()
-                            delta = delta.to(self.device).float()
-                            y = y.to(self.device)
-
-                            logits = self(x, m, delta)
-                            loss = criterion(logits, y)
-                            val_total_loss += loss.item()
-
-                            probs = torch.softmax(logits, dim=1)[:, 1]
-                            all_true.append(y.cpu())
-                            all_pred.append(probs.cpu())
-
-                    val_loss = val_total_loss / len(val_loader)
-                    val_losses.append(val_loss)
-
-                    # compute AUROC if possible
-                    try:
-                        y_true = torch.cat(all_true).numpy()
-                        y_pred = torch.cat(all_pred).numpy()
-                        auc = roc_auc_score(y_true, y_pred)
-                    except:
-                        auc = float("nan")
-
-                # PROGRESS BAR
-                if val_loader:
-                    pbar.set_postfix({'Train Loss': round(train_loss,3), 'Val Loss': round(val_loss,3), 'AUC': round(auc,3)})
-                else:
-                    pbar.set_postfix({'Train Loss': round(train_loss,3)})
-
-                # PLOT (opzional)
-                with frame_plot:
-                    plot_foo(self.name, train_losses, val_losses, size=plotsize) if enable_plot else None
-
-        return train_losses, val_losses
-
-    @torch.no_grad()
-    def predict_proba(self, dataloader):
-        self.eval()
-        all_probs = []
-
-        for batch in dataloader:
-            # 🔹 Gestione batch coerente con train_model
-            if len(batch) == 5:
-                x, m, delta, _, _ = batch
-            elif len(batch) == 4:
-                x, m, delta, _ = batch
-            else:
-                raise ValueError(f"Unexpected batch length: {len(batch)}")
-
-            x = x.to(self.device).float()
-            m = m.to(self.device).float()
-            delta = delta.to(self.device).float()
-
-            logits = self.forward(x, m, delta)
-
-            # 🔹 Binary (output_size = 1)
-            if logits.shape[1] == 1:
-                prob_pos = torch.sigmoid(logits)
-                probs = torch.cat([1 - prob_pos, prob_pos], dim=1)
-            # 🔹 Multiclass (output_size >= 2)
-            else:
-                probs = torch.softmax(logits, dim=1)
-
-            all_probs.append(probs.detach().cpu())
-
-        return torch.cat(all_probs, dim=0)
-
-    @torch.no_grad()
-    def predict(self, dataloader):
-        probs = self.predict_proba(dataloader)
-        preds = torch.argmax(probs, dim=1)
-        return preds, probs
-
-    def get_embeddings(self, dataloader):
-        self.to(self.device)
-        self.eval()
-        all_embeds = []
-        all_ids = []
-
-        with torch.no_grad():
-            for batch in dataloader:
-                if len(batch) == 5:
-                    x, m, delta, _, pid = batch
-                else:
-                    x, m, delta, pid = batch
-
-                x, m, delta = x.to(self.device).float(), m.to(self.device).float(), delta.to(self.device).float()
-                batch_size, seq_len, input_size = x.size()
-                h = torch.zeros(batch_size, self.hidden_size, device=self.device)
-                x_hat = m * x + (1 - m) * self.x_mean.to(x.device)
-                for t in range(seq_len):
-                    x_t_hat = x_hat[:, t, :]
-                    m_t = m[:, t, :]
-                    gru_input = torch.cat([x_t_hat, m_t], dim=1)
-                    h = self.gru_cell(gru_input, h)
-                all_embeds.append(h.cpu())
-                all_ids.extend(pid)
-        return torch.cat(all_embeds, dim=0).numpy(), all_ids
 
 #------------------------------------------------------------------------------------------------
 # Dipole
@@ -2487,93 +1745,93 @@ class DipoleModel(nn.Module):
 
         with frame_tqdm:
             frame_tqdm.clear_output(wait=True)
-            pbar = tqdm(range(num_epochs), total=num_epochs, desc=f'Training [{self.name}]')
-            for epoch in pbar:
-                # TRAIN
-                self.train()
-                total_loss = 0
+            with tqdm(range(num_epochs),desc=f"Training [{self.name}]",position=1,leave=False,dynamic_ncols=True,) as pbar:
+                for epoch in pbar:
+                    # TRAIN
+                    self.train()
+                    total_loss = 0
 
-                for batch in train_loader:
-                    # Gestione batch con o senza M / y
-                    if len(batch) == 4:
-                        X, M, y, _ = batch
-                    elif len(batch) == 3:
-                        X, M, y = batch
+                    for batch in train_loader:
+                        # Gestione batch con o senza M / y
+                        if len(batch) == 4:
+                            X, M, y, _ = batch
+                        elif len(batch) == 3:
+                            X, M, y = batch
+                        else:
+                            raise ValueError(f"Unexpected batch length: {len(batch)}")
+
+                        X = X.to(self.device)
+
+                        if M is not None:
+                            M = (M[0].to(self.device), M[1].to(self.device))
+
+                        if y is not None:
+                            y = y.long().to(self.device)   # <-- conversione a LongTensor
+
+                        optimizer.zero_grad()
+                        logits, _, _ = self(X, M)
+
+                        loss = criterion(logits, y)
+                        loss.backward()
+                        optimizer.step()
+
+                        total_loss += loss.item()
+                    train_loss = total_loss / len(train_loader)
+                    #pbar.set_description(f"[Dipole] Embedding: Loss {avg_loss:.4f}")
+                    train_losses.append(train_loss)
+
+                    # VALIDATION
+                    if val_loader is not None:
+                        self.eval()
+                        val_total_loss = 0
+
+                        with torch.no_grad():
+                            for batch in val_loader:
+                                if len(batch) == 4:
+                                    X, M, y, _ = batch
+                                elif len(batch) == 3:
+                                    X, M, y = batch
+                                else:
+                                    raise ValueError(f"Unexpected batch length: {len(batch)}")
+
+                                X = X.to(self.device)
+                                if M is not None:
+                                    M = (M[0].to(self.device), M[1].to(self.device))
+                                y = y.long().to(self.device)
+
+                                logits, _, _ = self(X, M)
+                                loss = criterion(logits, y)
+                                val_total_loss += loss.item()
+
+                        val_loss = val_total_loss / len(val_loader)
+                        val_losses.append(val_loss)
+
+                        # early stopping
+                        if val_loss < best_val:
+                            best_val = val_loss
+                            patience_ctr = 0
+                            best_state = {
+                                "model": self.state_dict(),
+                                "optimizer": optimizer.state_dict(),
+                                "epoch": epoch
+                            }
+                        else:
+                            patience_ctr += 1
+
+                        if early_stopping and patience_ctr >= patience:
+                            print(f"Early stopping at epoch {epoch+1}")
+                            self.load_state_dict(best_state["model"])
+                            break
+                        
+                    # PROGRESS BAR
+                    if val_loader:
+                        pbar.set_postfix({'Train Loss': round(train_loss,3), 'Val Loss': round(val_loss,3), 'AUC': round(auc,3)})
                     else:
-                        raise ValueError(f"Unexpected batch length: {len(batch)}")
+                        pbar.set_postfix({'Train Loss': round(train_loss,3)})
 
-                    X = X.to(self.device)
-
-                    if M is not None:
-                        M = (M[0].to(self.device), M[1].to(self.device))
-
-                    if y is not None:
-                        y = y.long().to(self.device)   # <-- conversione a LongTensor
-
-                    optimizer.zero_grad()
-                    logits, _, _ = self(X, M)
-
-                    loss = criterion(logits, y)
-                    loss.backward()
-                    optimizer.step()
-
-                    total_loss += loss.item()
-                train_loss = total_loss / len(train_loader)
-                #pbar.set_description(f"[Dipole] Embedding: Loss {avg_loss:.4f}")
-                train_losses.append(train_loss)
-
-                # VALIDATION
-                if val_loader is not None:
-                    self.eval()
-                    val_total_loss = 0
-
-                    with torch.no_grad():
-                        for batch in val_loader:
-                            if len(batch) == 4:
-                                X, M, y, _ = batch
-                            elif len(batch) == 3:
-                                X, M, y = batch
-                            else:
-                                raise ValueError(f"Unexpected batch length: {len(batch)}")
-
-                            X = X.to(self.device)
-                            if M is not None:
-                                M = (M[0].to(self.device), M[1].to(self.device))
-                            y = y.long().to(self.device)
-
-                            logits, _, _ = self(X, M)
-                            loss = criterion(logits, y)
-                            val_total_loss += loss.item()
-
-                    val_loss = val_total_loss / len(val_loader)
-                    val_losses.append(val_loss)
-
-                    # early stopping
-                    if val_loss < best_val:
-                        best_val = val_loss
-                        patience_ctr = 0
-                        best_state = {
-                            "model": self.state_dict(),
-                            "optimizer": optimizer.state_dict(),
-                            "epoch": epoch
-                        }
-                    else:
-                        patience_ctr += 1
-
-                    if early_stopping and patience_ctr >= patience:
-                        print(f"Early stopping at epoch {epoch+1}")
-                        self.load_state_dict(best_state["model"])
-                        break
-                    
-                # PROGRESS BAR
-                if val_loader:
-                    pbar.set_postfix({'Train Loss': round(train_loss,3), 'Val Loss': round(val_loss,3), 'AUC': round(auc,3)})
-                else:
-                    pbar.set_postfix({'Train Loss': round(train_loss,3)})
-
-                # PLOT (opzional)
-                with frame_plot:
-                    plot_foo(self.name, train_losses, val_losses, size=plotsize) if enable_plot else None
+                    # PLOT (opzional)
+                    with frame_plot:
+                        plot_foo(self.name, train_losses, val_losses, size=plotsize) if enable_plot else None
 
         return train_losses, val_losses
 
@@ -2624,9 +1882,24 @@ class DipoleModel(nn.Module):
         return torch.cat(all_probs, dim=0)
 
     @torch.no_grad()
-    def predict(self, dataloader):
+    def predict(self, dataloader, threshold=0.5):
         probs = self.predict_proba(dataloader)
-        preds = torch.argmax(probs, dim=1)
+        # ----------------------------
+        # BINARIO
+        # ----------------------------
+        if probs.shape[1] == 2:
+            prob_pos = probs[:, 1]
+
+            if not (0.0 <= threshold <= 1.0):
+                raise ValueError("threshold must be in [0,1]")
+
+            preds = (prob_pos >= threshold).long()
+
+        # ----------------------------
+        # MULTICLASS (fallback)
+        # ----------------------------
+        else:
+            preds = torch.argmax(probs, dim=1)
         return preds, probs
 
     # ------------------------------------------------------------
@@ -2901,60 +2174,60 @@ class Med2VecModel(nn.Module):
         with frame_tqdm:
             frame_tqdm.clear_output(wait=True)
 
-            pbar = tqdm(range(num_epochs), total=num_epochs, desc=f"Training [{self.name}]")
+            with tqdm(range(num_epochs),desc=f"Training [{self.name}]",position=1,leave=False,dynamic_ncols=True,) as pbar:
 
-            for epoch in pbar:
-                # =========================
-                # TRAIN
-                # =========================
-                self.train()
-                total_loss = 0
+                for epoch in pbar:
+                    # =========================
+                    # TRAIN
+                    # =========================
+                    self.train()
+                    total_loss = 0
 
-                for batch in train_loader:
-                    optimizer.zero_grad()
+                    for batch in train_loader:
+                        optimizer.zero_grad()
 
-                    ids, x, y = batch
+                        ids, x, y = batch
 
-                    x = x.long().to(self.device)
-                    y = y.float().unsqueeze(1).to(self.device)
+                        x = x.long().to(self.device)
+                        y = y.float().unsqueeze(1).to(self.device)
 
-                    logits, patient_emb, visit_emb = self(x)
+                        logits, patient_emb, visit_emb = self(x)
 
-                    loss_cls = criterion(logits, y)
-                    loss_visit = self.compute_visit_loss(visit_emb, x)
+                        loss_cls = criterion(logits, y)
+                        loss_visit = self.compute_visit_loss(visit_emb, x)
 
-                    loss = loss_cls + lambda_visit * loss_visit
+                        loss = loss_cls + lambda_visit * loss_visit
 
-                    loss.backward()
-                    optimizer.step()
+                        loss.backward()
+                        optimizer.step()
 
-                    total_loss += loss.item()
+                        total_loss += loss.item()
 
-                avg_train_loss = total_loss / len(train_loader)
-                train_losses.append(avg_train_loss)
+                    avg_train_loss = total_loss / len(train_loader)
+                    train_losses.append(avg_train_loss)
 
-                # =========================
-                # VALIDATION
-                # =========================
-                if val_loader is not None:
-                    val_loss, auc = self.evaluate(val_loader)
-                    val_losses.append(val_loss)
-                    val_aucs.append(auc)
+                    # =========================
+                    # VALIDATION
+                    # =========================
+                    if val_loader is not None:
+                        val_loss, auc = self.evaluate(val_loader)
+                        val_losses.append(val_loss)
+                        val_aucs.append(auc)
 
-                    pbar.set_postfix({
-                        'Train Loss': round(avg_train_loss, 3),
-                        'Val Loss': round(val_loss, 3),
-                        'AUC': round(auc, 3)
-                    })
-                else:
-                    pbar.set_postfix({'Train Loss': round(avg_train_loss, 3)})
+                        pbar.set_postfix({
+                            'Train Loss': round(avg_train_loss, 3),
+                            'Val Loss': round(val_loss, 3),
+                            'AUC': round(auc, 3)
+                        })
+                    else:
+                        pbar.set_postfix({'Train Loss': round(avg_train_loss, 3)})
 
-                # =========================
-                # PLOT LIVE
-                # =========================
-                with frame_plot:
-                    if enable_plot:
-                        plot_foo(self.name, train_losses, val_losses, size=plotsize)
+                    # =========================
+                    # PLOT LIVE
+                    # =========================
+                    with frame_plot:
+                        if enable_plot:
+                            plot_foo(self.name, train_losses, val_losses, size=plotsize)
 
         return train_losses, val_losses
 
@@ -3082,3 +2355,548 @@ class Med2VecModel(nn.Module):
             all_ids.extend(ids)
 
         return np.vstack(all_feats), np.array(all_ids)
+
+################################################################
+# TF-IDF model
+################################################################
+def identity(x):
+    """
+    Necessario per passare direttamente liste di token
+    a TfidfVectorizer a Bag-of_word.
+    """
+    return x
+
+
+class TFIDFModel:
+
+    def __init__(
+        self,
+        max_features=None,
+        min_df=2,
+        max_df=1.0,
+        ngram_range=(1, 1),
+        sublinear_tf=True,
+        use_svd=True,
+        embedding_dim=128,
+        random_state=42,
+        name="TFIDF"
+    ):
+
+        self.name = name
+
+        self.max_features = max_features
+        self.min_df = min_df
+        self.max_df = max_df
+        self.ngram_range = ngram_range
+        self.sublinear_tf = sublinear_tf
+
+        self.use_svd = use_svd
+        self.embedding_dim = embedding_dim
+        self.random_state = random_state
+
+        # ---------------------------------------------------
+        # TF-IDF
+        # ---------------------------------------------------
+
+        self.vectorizer = TfidfVectorizer(
+            tokenizer=identity,
+            preprocessor=None,
+            token_pattern=None,
+            lowercase=False,
+            max_features=max_features,
+            min_df=min_df,
+            max_df=max_df,
+            ngram_range=ngram_range,
+            sublinear_tf=sublinear_tf,
+            dtype=np.float32
+        )
+
+        # ---------------------------------------------------
+        # SVD opzionale
+        # ---------------------------------------------------
+
+        if use_svd:
+            self.svd = TruncatedSVD(
+                n_components=embedding_dim,
+                random_state=random_state
+            )
+        else:
+            self.svd = None
+
+        # classificatore interno opzionale
+        self.classifier = LogisticRegression(
+            max_iter=2000,
+            class_weight="balanced",
+            random_state=random_state
+        )
+
+        self.is_fitted = False
+        self.classifier_fitted = False
+
+    # =======================================================
+    # TRAIN
+    # =======================================================
+
+    def train_model(
+        self,
+        train_sequences,
+        train_labels=None,
+        val_sequences=None,
+        val_labels=None,
+        enable_plot=False,
+        frame_tqdm=None,
+        frame_plot=None,
+        plotsize=(4, 5)
+    ):
+        """
+        train_sequences:
+            list[list[str]]
+
+        train_labels:
+            opzionale.
+            Se presenti, addestra anche una LogisticRegression
+            interna per permettere evaluate/predict.
+        """
+
+        # ----------------------------
+        # FIT TF-IDF
+        # ----------------------------
+
+        X_train = self.vectorizer.fit_transform(train_sequences)
+
+        tqdm.write(
+            f"[{self.name}] TF-IDF matrix: "
+            f"{X_train.shape[0]} patients x "
+            f"{X_train.shape[1]} features"
+        )
+
+        # ----------------------------
+        # SVD
+        # ----------------------------
+
+        if self.use_svd:
+
+            # sicurezza se vocabulary molto piccolo
+            n_comp = min(
+                self.embedding_dim,
+                X_train.shape[1] - 1
+            )
+
+            if n_comp <= 0:
+                raise ValueError(
+                    "Vocabolario troppo piccolo per TruncatedSVD"
+                )
+
+            if n_comp != self.svd.n_components:
+                self.svd = TruncatedSVD(
+                    n_components=n_comp,
+                    random_state=self.random_state
+                )
+
+            X_train_emb = self.svd.fit_transform(X_train)
+
+            explained = self.svd.explained_variance_ratio_.sum()
+
+            tqdm.write(
+                f"[{self.name}] SVD embedding: "
+                f"{X_train_emb.shape[1]} dimensions"
+            )
+
+            tqdm.write(
+                f"[{self.name}] Explained variance: "
+                f"{explained:.3f}"
+            )
+
+        else:
+            X_train_emb = X_train
+
+        self.is_fitted = True
+
+        # ---------------------------------------------------
+        # classificatore opzionale
+        # ---------------------------------------------------
+
+        train_auc = np.nan
+        val_auc = np.nan
+
+        if train_labels is not None:
+
+            self.classifier.fit(
+                X_train_emb,
+                np.asarray(train_labels)
+            )
+
+            self.classifier_fitted = True
+
+            p_train = self.classifier.predict_proba(
+                X_train_emb
+            )[:, 1]
+
+            train_auc = roc_auc_score(
+                train_labels,
+                p_train
+            )
+
+            tqdm.write(
+                f"[{self.name}] Train AUC: "
+                f"{train_auc:.3f}"
+            )
+
+            if (
+                val_sequences is not None
+                and val_labels is not None
+            ):
+
+                X_val_emb = self.transform(
+                    val_sequences
+                )
+
+                p_val = self.classifier.predict_proba(
+                    X_val_emb
+                )[:, 1]
+
+                val_auc = roc_auc_score(
+                    val_labels,
+                    p_val
+                )
+
+                tqdm.write(
+                    f"[{self.name}] Validation AUC: "
+                    f"{val_auc:.3f}"
+                )
+
+        return train_auc, val_auc
+
+    # =======================================================
+    # TRANSFORM
+    # =======================================================
+
+    def transform(self, sequences):
+
+        if not self.is_fitted:
+            raise RuntimeError(
+                "Il modello deve essere prima addestrato "
+                "con train_model()."
+            )
+
+        X = self.vectorizer.transform(sequences)
+
+        if self.use_svd:
+            X = self.svd.transform(X)
+
+        return X
+
+    # =======================================================
+    # GET EMBEDDINGS
+    # =======================================================
+
+    def get_embeddings(self, sequences, ids=None):
+
+        X = self.transform(sequences)
+
+        # TF-IDF puro => sparse matrix
+        if not self.use_svd:
+            X = X.toarray()
+
+        if ids is None:
+            ids = np.arange(len(sequences))
+
+        return X, np.asarray(ids)
+
+    # =======================================================
+    # EVALUATE
+    # =======================================================
+
+    def evaluate(self, sequences, labels):
+
+        if not self.classifier_fitted:
+            raise RuntimeError(
+                "Il classificatore interno non è stato addestrato."
+            )
+
+        X = self.transform(sequences)
+
+        probs = self.classifier.predict_proba(X)[:, 1]
+
+        auc = roc_auc_score(
+            labels,
+            probs
+        )
+
+        loss = log_loss(
+            labels,
+            probs
+        )
+
+        return loss, auc
+
+    # =======================================================
+    # PREDICT PROBA
+    # =======================================================
+
+    def predict_proba(self, sequences):
+
+        if not self.classifier_fitted:
+            raise RuntimeError(
+                "Il classificatore interno non è stato addestrato."
+            )
+
+        X = self.transform(sequences)
+
+        return self.classifier.predict_proba(X)
+
+    # =======================================================
+    # PREDICT
+    # =======================================================
+
+    def predict(self, sequences, threshold=0.5):
+
+        probs = self.predict_proba(sequences)
+
+        prob_positive = probs[:, 1]
+
+        preds = (
+            prob_positive >= threshold
+        ).astype(int)
+
+        return preds, probs
+    
+
+###############################################################
+# BAG-OF-WORD
+###############################################################
+class BOWModel:
+
+    def __init__(
+        self,
+        max_features=None,
+        min_df=2,
+        max_df=1.0,
+        ngram_range=(1, 1),
+        binary=False,
+        use_svd=True,
+        embedding_dim=128,
+        random_state=42,
+        name="BOW"
+    ):
+
+        self.name = name
+        self.max_features = max_features
+        self.min_df = min_df
+        self.max_df = max_df
+        self.ngram_range = ngram_range
+        self.binary = binary
+        self.use_svd = use_svd
+        self.embedding_dim = embedding_dim
+        self.random_state = random_state
+
+        self.vectorizer = CountVectorizer(
+            tokenizer=identity,
+            preprocessor=None,
+            token_pattern=None,
+            lowercase=False,
+            max_features=max_features,
+            min_df=min_df,
+            max_df=max_df,
+            ngram_range=ngram_range,
+            binary=binary,
+            dtype=np.float32
+        )
+
+        if use_svd:
+            self.svd = TruncatedSVD(
+                n_components=embedding_dim,
+                random_state=random_state
+            )
+        else:
+            self.svd = None
+
+        self.classifier = LogisticRegression(
+            max_iter=2000,
+            class_weight="balanced",
+            random_state=random_state
+        )
+
+        self.is_fitted = False
+        self.classifier_fitted = False
+
+    def train_model(
+        self,
+        train_sequences,
+        train_labels=None,
+        val_sequences=None,
+        val_labels=None,
+        enable_plot=False,
+        frame_tqdm=None,
+        frame_plot=None,
+        plotsize=(4, 5)
+    ):
+
+        X_train = self.vectorizer.fit_transform(train_sequences)
+
+        tqdm.write(
+            f"[{self.name}] BoW matrix: "
+            f"{X_train.shape[0]} patients x "
+            f"{X_train.shape[1]} features"
+        )
+
+        if self.use_svd:
+
+            n_comp = min(
+                self.embedding_dim,
+                X_train.shape[1] - 1
+            )
+
+            if n_comp <= 0:
+                raise ValueError(
+                    "Vocabolario troppo piccolo per TruncatedSVD"
+                )
+
+            if n_comp != self.svd.n_components:
+                self.svd = TruncatedSVD(
+                    n_components=n_comp,
+                    random_state=self.random_state
+                )
+
+            X_train_emb = self.svd.fit_transform(X_train)
+
+            explained = self.svd.explained_variance_ratio_.sum()
+
+            tqdm.write(
+                f"[{self.name}] SVD embedding: "
+                f"{X_train_emb.shape[1]} dimensions"
+            )
+
+            tqdm.write(
+                f"[{self.name}] Explained variance: "
+                f"{explained:.3f}"
+            )
+
+        else:
+            X_train_emb = X_train
+
+        self.is_fitted = True
+
+        train_auc = np.nan
+        val_auc = np.nan
+
+        if train_labels is not None:
+
+            self.classifier.fit(
+                X_train_emb,
+                np.asarray(train_labels)
+            )
+
+            self.classifier_fitted = True
+
+            p_train = self.classifier.predict_proba(
+                X_train_emb
+            )[:, 1]
+
+            train_auc = roc_auc_score(
+                train_labels,
+                p_train
+            )
+
+            tqdm.write(
+                f"[{self.name}] Train AUC: "
+                f"{train_auc:.3f}"
+            )
+
+            if (
+                val_sequences is not None
+                and val_labels is not None
+            ):
+
+                X_val_emb = self.transform(
+                    val_sequences
+                )
+
+                p_val = self.classifier.predict_proba(
+                    X_val_emb
+                )[:, 1]
+
+                val_auc = roc_auc_score(
+                    val_labels,
+                    p_val
+                )
+
+                tqdm.write(
+                    f"[{self.name}] Validation AUC: "
+                    f"{val_auc:.3f}"
+                )
+
+        return train_auc, val_auc
+
+    def transform(self, sequences):
+
+        if not self.is_fitted:
+            raise RuntimeError(
+                "Il modello deve essere prima addestrato "
+                "con train_model()."
+            )
+
+        X = self.vectorizer.transform(sequences)
+
+        if self.use_svd:
+            X = self.svd.transform(X)
+
+        return X
+
+    def get_embeddings(self, sequences, ids=None):
+
+        X = self.transform(sequences)
+
+        if not self.use_svd:
+            X = X.toarray()
+
+        if ids is None:
+            ids = np.arange(len(sequences))
+
+        return X, np.asarray(ids)
+
+    def evaluate(self, sequences, labels):
+
+        if not self.classifier_fitted:
+            raise RuntimeError(
+                "Il classificatore interno non è stato addestrato."
+            )
+
+        X = self.transform(sequences)
+
+        probs = self.classifier.predict_proba(X)[:, 1]
+
+        auc = roc_auc_score(
+            labels,
+            probs
+        )
+
+        loss = log_loss(
+            labels,
+            probs
+        )
+
+        return loss, auc
+
+    def predict_proba(self, sequences):
+
+        if not self.classifier_fitted:
+            raise RuntimeError(
+                "Il classificatore interno non è stato addestrato."
+            )
+
+        X = self.transform(sequences)
+
+        return self.classifier.predict_proba(X)
+
+    def predict(self, sequences, threshold=0.5):
+
+        probs = self.predict_proba(sequences)
+
+        prob_positive = probs[:, 1]
+
+        preds = (
+            prob_positive >= threshold
+        ).astype(int)
+
+        return preds, probs

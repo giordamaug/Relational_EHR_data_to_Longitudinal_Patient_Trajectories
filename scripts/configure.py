@@ -1,5 +1,6 @@
-from .embedding import FlexLSTMembedder, BEHRTembedder, COUNTEmbedder, DipoleEmbedder, CEHRBERTembedder
-from .embedding import StaticEmbedder, DOMEEmbedder, BINARYEmbedder, FREQEmbedder, GRUEmbedder, Med2VecEmbedder
+from .embedding import FlexLSTMembedder,  COUNTEmbedder, DipoleEmbedder, CEHRBERTembedder
+from .embedding import StaticEmbedder, DOMEEmbedder, BINARYEmbedder, FREQEmbedder, GRUEmbedder, Med2VecEmbedder, TFIDFembedder, BOWembedder
+from .classifiers import GRUclassifier, Med2Vecclassifier, DipoleClassifier, FlexLSTMclassifier
 
 def configure(event_sequences, visit_sequences, event_sequences_type, labels, X_static, args):
     vocab = set()
@@ -21,6 +22,7 @@ def configure(event_sequences, visit_sequences, event_sequences_type, labels, X_
     return { 
         "BiPadLSTM" : 
         {   "func": FlexLSTMembedder,
+            "clf": FlexLSTMclassifier,
             "kwargs": {
                 "name": "BiPadLSTM",
                 "sequences": event_sequences,
@@ -52,21 +54,9 @@ def configure(event_sequences, visit_sequences, event_sequences_type, labels, X_
                 "enable_plot": args.enable_plot
             }
         },
-        "BEHRT" : 
-        {   "func": BEHRTembedder,
-            "kwargs": {
-                "sequences": visit_sequences,
-                "labels": labels,
-                "word_to_idx": code2id,
-                "num_epochs": args.num_epochs,
-                "batch_size": args.batch_size,
-                "embed_size": args.embedding_dim,
-                "hidden_size": args.hidden_dim,
-                "enable_plot": args.enable_plot
-            }
-        },
         "Dipole" : 
         {   "func": DipoleEmbedder,
+            "clf": DipoleClassifier,
             "kwargs": {
                 "sequences": event_sequences,
                 "labels": labels,
@@ -80,6 +70,7 @@ def configure(event_sequences, visit_sequences, event_sequences_type, labels, X_
         },
         "Med2Vec" : 
         {   "func": Med2VecEmbedder,
+            "clf": Med2Vecclassifier,
                 "kwargs": {
                 "sequences": event_sequences,
                 "labels": labels,
@@ -94,6 +85,7 @@ def configure(event_sequences, visit_sequences, event_sequences_type, labels, X_
         },
         "GRU" : 
         {   "func": GRUEmbedder,
+            "clf": GRUclassifier,
             "kwargs": {
                 "sequences": event_sequences,
                 "labels": labels,
@@ -116,7 +108,7 @@ def configure(event_sequences, visit_sequences, event_sequences_type, labels, X_
         {
             "func": DOMEEmbedder,
             "kwargs": {
-                 "sequences": { id: events + [("dead", events[-1][1])] if labels[id]==1 else events for id,events in event_sequences.items()}, 
+                 "sequences": { id: events + [("dead", max(args.dataset.loc[id]["date_of_death"], events[-1][1]))] if labels[id]==1 else events for id,events in event_sequences.items()}, 
                  "targets": ["dead"],
                  "df": args.dataset,
                  "enable_plot": args.enable_plot
@@ -134,9 +126,7 @@ def configure(event_sequences, visit_sequences, event_sequences_type, labels, X_
         {
             "func": BINARYEmbedder,
             "kwargs": {
-                "sequences": event_sequences,
-                "vocab": vocab,
-                "targets": [args.target_var],
+                "sequences": event_sequences_type,
                 "enable_plot": args.enable_plot
             }
         },
@@ -144,10 +134,28 @@ def configure(event_sequences, visit_sequences, event_sequences_type, labels, X_
         {
             "func": FREQEmbedder,
             "kwargs": {
-                "sequences": event_sequences,
-                "vocab": vocab,
-                "targets": [args.target_var],
+                "sequences": event_sequences_type,
                 "enable_plot": args.enable_plot
             }
         },
+        "TF-IDF":
+        {
+            "func": TFIDFembedder,
+            "kwargs": {
+                "sequences": event_sequences_type,
+                "labels": labels,
+                "embedding_dim": args.embedding_dim,
+                "enable_plot": args.enable_plot
+            }
+        },
+        "BOW":
+        {
+            "func": BOWembedder,
+            "kwargs": {
+                "sequences": event_sequences_type,
+                "labels": labels,
+                "embedding_dim": args.embedding_dim,
+                "enable_plot": args.enable_plot
+            }           
+        }
     }
