@@ -16,9 +16,24 @@ We included in this repository:
 - High Performance Computing and Networking (ICAR), Italian National Council of Research (CNR)
 
 ## Running the experiments
-The experiments can be run individually by using the 'notebook.ipynb' that can be execute in the Google Colab (or Jupyter Lab) environments.
+The experiments can be run individually by using the `notebook.ipynb` that can be execute in the Google Colab (or Jupyter Lab) environments.
 
 The experiments can be run by termnal with the commands.
 
 
-
+```
+# Main experiments
+python notebook.py --dataname INA --datafile INA_dataset_rev1.json \
+  --results-dir experiment_main100 --mode embed --folds-dir-mimic folds100 --iter 10
+python notebook.py --dataname MIMIC --datafile MIMIC_dataset_rev1.json \
+  --results-dir experiment_main100 --mode embed --iter 10
+# End-to-end experiments
+python notebook.py --dataname INA --datafile INA_dataset_rev1.json --results-dir experiment_e2e100 --mode e2e --methods Med2Vec --methods Dipole --methods BiPadLSTM --methods GRU --iter 10
+python notebook.py --dataname INA --datafile INA_dataset_rev1.json --results-dir experiment_embed00 --mode embed --methods Med2Vec --methods Dipole --methods BiPadLSTM --methods GRU --iter 10
+# ICD code experiments
+python notebook.py --dataname INA --datafile INA_dataset_rev1.json \
+  --results-dir experiment_code100 --evfields code --mode embed --iter 10
+# Shuffling experiments
+python notebook.py --dataname INA --datafile INA_dataset_rev1.json \
+  --results-dir experiment_shuffle100 --mode embed --iter 10 --shuffle
+```
