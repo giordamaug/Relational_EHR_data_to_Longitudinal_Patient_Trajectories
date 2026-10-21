@@ -18,7 +18,7 @@ We included in this repository:
 ## Running the experiments
 The experiments can be run individually by using the `notebook.ipynb` that can be execute in the Google Colab (or Jupyter Lab) environments.
 
-The experiments can be run by termnal with the commands.
+The experiments can be run by terminal with the commands.
 
 
 ```
@@ -37,3 +37,19 @@ python notebook.py --dataname INA --datafile INA_dataset_rev1.json \
 python notebook.py --dataname INA --datafile INA_dataset_rev1.json \
   --results-dir experiment_shuffle100 --mode embed --iter 10 --shuffle
 ```
+
+During running the script `notebook.pyn` produces several temporary files (in `--results-dir` forlder) collecting metric measures. These measure need to be processed by the `metric_calculations.ipynb` notebook to sum-up metric statistics
+(mean, standard deviation, confidence  intervals, etc).
+Once summary files are generated for metric values, you can plot the results by using one of the associate notebook:
+
+- `results_main.ipynb` displays radar plots of results from Main experiments
+- `stats_analysis.ipynb` performs statistical significance analysis of results from Main experiments 
+- `calibration_analysis.ipynb` performs calibration analysis of results from Main experiments 
+- `memory_analysis.ipynb` displays table of CPU, memory and time consumption of Main experiments 
+- `pycarets.ipynb` perform comparison of LighGBM classifier vs other methods with PyCarte toolset 
+- `results_main.ipynb` for Main experiments
+- `results_ablation_e2e.ipynb` displays radar plots (and comparison barplots) for End-to-end experiments
+- `results_ablation_code.ipynb` displays radar plots (and comparison barplots) for ICD code experiments
+- `results_ablation_shuffle.ipynb` displays radar plots (and comparison barplots) for Shuffling experiments
+
+The notebook `mimic_to_json.ipynb` implements the worflow for generating a unified JSON representation  of clinical data starting from relational database MIMIC-IV sources (you need a licence from Physionet to download MIMIC-IV v.3.1 source data)
