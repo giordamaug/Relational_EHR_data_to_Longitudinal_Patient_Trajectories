@@ -15,3 +15,10 @@ We included in this repository:
 - [Maurizio Giordano](https://orcid.org/0000-0001-9917-7591) and [Ilaria Granata](https://orcid.org/0000-0002-3450-4667)
 - High Performance Computing and Networking (ICAR), Italian National Council of Research (CNR)
 
+## Running the experiments
+The experiments can be run individually by using the 'notebook.ipynb' that can be execute in the Google Colab (or Jupyter Lab) environments.
+
+The experiments can be run by termnal with the commands.
+
+
+
