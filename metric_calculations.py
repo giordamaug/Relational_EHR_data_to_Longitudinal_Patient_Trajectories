@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# ## Set the experiment to process results for
+### Set the experiment to process results for
 
 from joblib import Parallel, delayed, parallel_config
 from scripts.utils import highlight_best_values
