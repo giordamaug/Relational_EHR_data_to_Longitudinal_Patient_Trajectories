@@ -45,7 +45,7 @@ def parse_method(value):
     parts = value.split("+")
     if any(not part.strip() for part in parts):
         raise argparse.ArgumentTypeError(
-            "Usa nomi come STATIC o STATIC+BINARY"
+            "Use names like STATIC o STATIC+BINARY"
         )
     return [part.strip() for part in parts]
 
@@ -53,46 +53,46 @@ def parse_method(value):
 def positive_int(value):
     number = int(value)
     if number < 1:
-        raise argparse.ArgumentTypeError("Il valore deve essere maggiore di 0")
+        raise argparse.ArgumentTypeError("Value must be greater than 0")
     return number
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Analisi dei risultati della cross-validation."
+        description="Cross-validation analysis of results and metric computation."
     )
 
     parser.add_argument(
         "--dataset",
-        default="MIMIC",
-        help="Nome del dataset (default: MIMIC)",
+        default="INA",
+        help="Dataset name (default: INA)",
     )
     parser.add_argument(
         "--iter",
         type=positive_int,
         default=10,
-        help="Numero di ripetizioni della CV (default: 10)",
+        help="Number of repetition of cross-validation (default: 10)",
     )
     parser.add_argument(
         "--results-dir",
         "--results_dir",
         dest="results_dir",
-        default="experiment_icd",
-        help="Directory dei risultati (default: experiment_icd)",
+        default="experiment_main",
+        help="result folder (default: experiment_icd)",
     )
     parser.add_argument(
         "--methods",
         nargs="+",
         type=parse_method,
         default=DEFAULT_METHODS,
-        help="Metodi da analizzare, per esempio STATIC STATIC+BINARY",
+        help="Methods to consider in experiment (example: STATIC STATIC+BINARY)",
     )
     parser.add_argument(
         "--metrics",
         nargs="+",
         choices=DEFAULT_METRICS,
         default=DEFAULT_METRICS,
-        help="Metriche da riportare (default: tutte)",
+        help="Metrics to calculate (default: all)",
     )
     parser.add_argument(
         "--save-summary",
