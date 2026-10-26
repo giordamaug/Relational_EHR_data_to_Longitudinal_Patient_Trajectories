@@ -14,6 +14,67 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+def plot_radar(
+    df,
+    method_styles,
+    title="Radar plot",
+    figsize=(10, 7),
+    legend_fontsize=10,
+):
+    """Plot a single radar chart using fixed styles for each method."""
+    if not df.index.is_unique:
+        raise ValueError("Method names must be unique.")
+
+    methods = list(df.index)
+    missing_styles = [method for method in methods if method not in method_styles]
+    if missing_styles:
+        raise ValueError(f"Missing styles for methods: {missing_styles}")
+
+    plot_metrics = list(df.columns)
+    if not plot_metrics:
+        raise ValueError("DataFrame must contain at least one metric.")
+
+    angles = np.linspace(0, 2 * np.pi, len(plot_metrics), endpoint=False)
+    closed_angles = np.r_[angles, angles[0]]
+
+    fig, ax = plt.subplots(
+        figsize=figsize,
+        subplot_kw={"projection": "polar"},
+    )
+
+    ax.set_theta_offset(np.pi / 2)
+    ax.set_theta_direction(-1)
+    ax.set_xticks(angles)
+    ax.set_xticklabels(plot_metrics)
+    ax.set_ylim(0, 1)
+    ax.set_title(title, pad=25)
+
+    for method in methods:
+        values = df.loc[method, plot_metrics].to_numpy(dtype=float)
+        closed_values = np.r_[values, values[0]]
+
+        ax.plot(
+            closed_angles,
+            closed_values,
+            linewidth=2,
+            label=method,
+            **method_styles[method],
+        )
+
+    if methods:
+        ax.legend(
+            loc="center left",
+            bbox_to_anchor=(1.15, 0.5),
+            frameon=False,
+            fontsize=legend_fontsize,
+            handlelength=4,
+        )
+
+    fig.subplots_adjust(left=0.1, right=0.7, bottom=0.15, top=0.85)
+    plt.show()
+
+    return fig, ax
+
 def plot_radars(
     dfm1,
     dfm2,
