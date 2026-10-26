@@ -128,10 +128,11 @@ def load_metric_files(args):
 
 def metric_values_with_calibration(y, p, threshold=0.30):
     # Le metriche già presenti, nello stesso ordine
+    from scipy.special import logit as scipy_logit
     values = metric_values(y, p, threshold)
 
     # Regressione di calibrazione: intercept e slope stimati insieme
-    z = logit(np.clip(p, 1e-6, 1 - 1e-6)).reshape(-1, 1)
+    z = scipy_logit(np.clip(p, 1e-6, 1 - 1e-6)).reshape(-1, 1)
 
     calibration_model = LogisticRegression(
         C=np.inf,
