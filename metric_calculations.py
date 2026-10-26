@@ -20,6 +20,9 @@ from sklearn.metrics import (
     precision_score,
     roc_auc_score,
 )
+from scipy.special import logit
+from sklearn.linear_model import LogisticRegression
+
 
 DEFAULT_METHODS = [
     ["STATIC"],
@@ -39,6 +42,7 @@ DEFAULT_METHODS = [
 DEFAULT_METRICS = [
     "AUC", "AUPRC", "F1", "PPV", "Sensitivity",
     "Specificity", "NPV", "MCC", "Accuracy", "Brier",
+    "Intercept", "Slope",
 ]
 
 def parse_method(value):
@@ -122,6 +126,28 @@ def load_metric_files(args):
                 results[meth][i] = pickle.load(f)
     return results
 
+def metric_values_with_calibration(y, p, threshold=0.30):
+    # Le metriche già presenti, nello stesso ordine
+    values = metric_values(y, p, threshold)
+
+    # Regressione di calibrazione: intercept e slope stimati insieme
+    z = logit(np.clip(p, 1e-6, 1 - 1e-6)).reshape(-1, 1)
+
+    calibration_model = LogisticRegression(
+        C=np.inf,
+        solver="lbfgs",
+        max_iter=1000,
+    )
+    calibration_model.fit(z, y)
+
+    return np.concatenate([
+        values,
+        [
+            calibration_model.intercept_[0],
+            calibration_model.coef_[0, 0],
+        ],
+    ])
+    
 def metric_values(y, p, threshold=0.30):
     """Metrics in a repetition, one value per subject."""
     pred = (p >= threshold).astype(int)
@@ -186,7 +212,160 @@ def align_oof_runs(runs):
     return y, P
 
 
+def mean_calibration_curve(y, P, n_bins=10):
+    """Average repetition-specific calibration curves using fixed bins."""
+    edges = np.linspace(0, 1, n_bins + 1)
+    predicted = np.full((P.shape[1], n_bins), np.nan)
+    observed = np.full((P.shape[1], n_bins), np.nan)
+
+    for r in range(P.shape[1]):
+        p = P[:, r]
+        bin_ids = np.digitize(p, edges[1:-1])
+
+        for b in range(n_bins):
+            mask = bin_ids == b
+            if mask.any():
+                predicted[r, b] = p[mask].mean()
+                observed[r, b] = y[mask].mean()
+
+    # Empty bins do not contribute to the average
+    valid_runs = np.isfinite(observed).sum(axis=0)
+
+    def average_bins(values):
+        return np.divide(
+            np.nansum(values, axis=0),
+            valid_runs,
+            out=np.full(n_bins, np.nan),
+            where=valid_runs > 0,
+        )
+
+    return (
+        average_bins(predicted),
+        average_bins(observed),
+        valid_runs,
+    )
+
 def summarize_repeated_cv(
+    runs,
+    metrics_names,
+    threshold=0.30,
+    n_boot=1000,
+    seed=42,
+    n_bins=10,
+):
+    if n_bins < 1 or n_boot < 1:
+        raise ValueError("n_bins and n_boot must be positive.")
+
+    y, P = align_oof_runs(runs)
+    rng = np.random.default_rng(seed)
+
+    # Metrics for each CV repetition
+    per_run = np.vstack([
+        metric_values_with_calibration(y, P[:, r], threshold)
+        for r in range(P.shape[1])
+    ])
+
+    if per_run.shape[1] != len(metrics_names):
+        raise ValueError(
+            f"Computed {per_run.shape[1]} metrics, "
+            f"but received {len(metrics_names)} names."
+        )
+
+    mean = per_run.mean(axis=0)
+    std = (
+        per_run.std(axis=0, ddof=1)
+        if P.shape[1] > 1
+        else np.full(len(metrics_names), np.nan)
+    )
+
+    # Average calibration curve across repetitions
+    predicted, observed, valid_runs = mean_calibration_curve(
+        y, P, n_bins
+    )
+
+    boot_means = []
+    boot_curves = []
+
+    with tqdm(
+        total=n_boot,
+        desc="Bootstrap",
+        unit="sample",
+    ) as pbar:
+
+        while len(boot_means) < n_boot:
+            idx = rng.integers(0, len(y), len(y))
+            y_b = y[idx]
+
+            if np.unique(y_b).size < 2:
+                continue
+
+            P_b = P[idx, :]
+
+            scores_b = np.vstack([
+                metric_values_with_calibration(
+                    y_b, P_b[:, r], threshold
+                )
+                for r in range(P_b.shape[1])
+            ])
+
+            boot_means.append(scores_b.mean(axis=0))
+
+            # Recalculate the average curve on the same bootstrap sample
+            _, observed_b, _ = mean_calibration_curve(
+                y_b, P_b, n_bins
+            )
+            boot_curves.append(observed_b)
+
+            pbar.update(1)
+
+    ci_low, ci_high = np.percentile(
+        np.asarray(boot_means), [2.5, 97.5], axis=0
+    )
+
+    summary = pd.DataFrame({
+        "mean": mean,
+        "std_between_runs": std,
+        "ci95_low": ci_low,
+        "ci95_high": ci_high,
+    }, index=metrics_names)
+
+    per_run = pd.DataFrame(
+        per_run,
+        columns=metrics_names,
+        index=pd.Index(range(len(runs)), name="iteration"),
+    )
+
+    # Pointwise confidence intervals for the observed frequencies
+    boot_curves = np.asarray(boot_curves)
+    curve_low = np.full(n_bins, np.nan)
+    curve_high = np.full(n_bins, np.nan)
+    valid_bootstraps = np.isfinite(boot_curves).sum(axis=0)
+
+    for b in range(n_bins):
+        values = boot_curves[:, b]
+        values = values[np.isfinite(values)]
+
+        # Omit intervals for bins frequently empty in bootstrap samples
+        if len(values) >= 0.95 * n_boot:
+            curve_low[b], curve_high[b] = np.percentile(
+                values, [2.5, 97.5]
+            )
+
+    edges = np.linspace(0, 1, n_bins + 1)
+    calibration = pd.DataFrame({
+        "bin_left": edges[:-1],
+        "bin_right": edges[1:],
+        "prob_pred": predicted,
+        "prob_true": observed,
+        "ci95_low": curve_low,
+        "ci95_high": curve_high,
+        "valid_runs": valid_runs,
+        "valid_bootstraps": valid_bootstraps,
+    })
+
+    return summary, per_run, calibration
+
+def summarize_repeated_cv_old(
     runs, metrics_names, threshold=0.30, n_boot=1000, seed=42
 ):
     y, P = align_oof_runs(runs)
@@ -354,14 +533,21 @@ def split_results_table(formatted_results, nsplit=4):
     return pd.concat(sections, ignore_index=True)
 
 def summarize_method(meth, runs, metrics_names, threshold, n_boot, seed):
-    summary, per_run = summarize_repeated_cv(
+    summary, per_run, calibration = summarize_repeated_cv(
         runs,
-        metrics_names,
+        metrics_names=metrics_names,
         threshold=threshold,
         n_boot=n_boot,
-        seed=seed,
+        n_bins=seed,
     )
-    return meth, summary, per_run
+    #summary, per_run = summarize_repeated_cv(
+    #    runs,
+    #    metrics_names,
+    #    threshold=threshold,
+    #    n_boot=n_boot,
+    #    seed=seed,
+    #)
+    return meth, summary, per_run, calibration
 
 def main():
     args = parse_args()
@@ -391,12 +577,11 @@ def main():
         
     summaries = {
         meth: summary
-        for meth, summary, per_run in outputs
+        for meth, summary, per_run, calibration in outputs
     }
-
-    scores_by_run = {
-        meth: per_run
-        for meth, summary, per_run in outputs
+    calibrations = {
+        meth: calibration
+        for meth, summary, per_run, calibration in outputs
     }
 
     # save summaries of metrics
@@ -406,6 +591,7 @@ def main():
             print(f"\n{meth}")
             print(summaries[meth].round(3))
             summaries[meth].to_csv(f"{args.results_dir}/summary_{args.dataset}_{meth}_ITER{args.iter}.csv")
+            calibrations[meth].to_csv(f"{args.results_dir}/calibration_{args.dataset}_{meth}_ITER{args.iter}.csv")
 
     formatted_results = format_results_table(
             summaries=summaries,
