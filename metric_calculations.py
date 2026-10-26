@@ -99,6 +99,11 @@ def parse_args():
         action=argparse.BooleanOptionalAction,
         default=True,
     )
+    parser.add_argument(
+        "--to-latex",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     return parser.parse_args()
 
 def load_metric_files(args):
@@ -414,12 +419,13 @@ def main():
                 f"result_table_{args.dataset}_ITER{args.iter}.csv"
             ),
     )
-    table = split_results_table(formatted_results, nsplit=4)
-    print(
-        highlight_best_values(
-            table.to_latex(index=False, escape=True)
+    if args.to_latex:
+        table = split_results_table(formatted_results, nsplit=4)
+        print(
+            highlight_best_values(
+                table.to_latex(index=False, escape=True)
+            )
         )
-    )
 
 if __name__ == "__main__":
     main()
