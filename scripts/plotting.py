@@ -9,14 +9,9 @@ from sklearn.feature_selection import VarianceThreshold
 import itertools
 from sklearn.metrics import brier_score_loss
 
-# Radar plot
-import matplotlib.pyplot as plt
-import numpy as np
-
-
 def plot_radar(
     df,
-    method_styles,
+    method_styles={},
     title="Radar plot",
     figsize=(10, 7),
     legend_fontsize=10,
@@ -52,13 +47,15 @@ def plot_radar(
     for method in methods:
         values = df.loc[method, plot_metrics].to_numpy(dtype=float)
         closed_values = np.r_[values, values[0]]
+        style = (method_styles[method] if method in method_styles.keys()
+                    else {"color": f"C{method.index(method) % 10}", "linestyle": "-"})
 
         ax.plot(
             closed_angles,
             closed_values,
             linewidth=2,
             label=method,
-            **method_styles[method],
+            **style,
         )
 
     if methods:
@@ -78,7 +75,7 @@ def plot_radar(
 def plot_radars(
     dfm1,
     dfm2,
-    method_styles,
+    method_styles={},
     titles=("plot 1", "plot 2"),
     figsize=(16, 9),
     width_ratios=(1.4, 0.6, 1.4),
@@ -130,12 +127,14 @@ def plot_radars(
             values = df.loc[method, plot_metrics].to_numpy(dtype=float)
             closed_values = np.r_[values, values[0]]
 
+            style = (method_styles[method] if method in method_styles.keys()
+                        else {"color": f"C{method.index(method) % 10}", "linestyle": "-"})
             line, = ax.plot(
                 closed_angles,
                 closed_values,
                 linewidth=2,
                 label=method,
-                **method_styles[method],
+                **style,
             )
 
             legend_handles.setdefault(method, line)
@@ -292,21 +291,21 @@ def plot_heatmap(X_df, y_df, Xv_df, ):
                     loc='upper center', bbox_to_anchor=(0.4, 0.5))
     plt.show()
 
-import matplotlib.pyplot as plt
-import numpy as np
-
-
 def plot_calibration_curves(
     methods,
     summary,
     curves,
     dataset,
+    method_styles={},
     bands=None,
     show_ci_band=False,
     figsize=(20, 11),
+    legend_fontsize=8,
     show=True,
 ):
     """Plot calibration curves with summary metrics and optional CI bands.
+
+    Colors repeat every six methods, with a different line style each cycle.
 
     Args:
         methods: Iterable of method component sequences joined with "+".
@@ -316,7 +315,8 @@ def plot_calibration_curves(
         dataset: Dataset name displayed in the title.
         bands: Optional mapping from method names to (x, low, high) CI arrays.
         show_ci_band: Whether to display confidence interval bands.
-        figsize: Figure size in inches.
+        figsize: Figure width and height in inches.
+        legend_fontsize: Legend font size in points.
         show: Whether to display the figure.
 
     Returns:
@@ -324,8 +324,6 @@ def plot_calibration_curves(
     """
     if show_ci_band and bands is None:
         raise ValueError("bands must be provided when show_ci_band=True.")
-
-    method_names = ["+".join(method) for method in methods]
 
     def metric_label(stats, name, decimals):
         row = stats.loc[name]
@@ -337,7 +335,7 @@ def plot_calibration_curves(
 
     # Create labels before plotting
     labels = {}
-    for method in method_names:
+    for method in methods:
         stats = summary[method]
         labels[method] = (
             f"{method}  |  "
@@ -350,30 +348,21 @@ def plot_calibration_curves(
 
     ax.plot(
         [0, 1], [0, 1],
-        "--", color="gray", label="Perfect calibration",
+        "--",
+        color="gray",
+        label="Perfect calibration",
     )
-    colors = [
-        "#1f77b4",  # Blue
-        "#ff7f0e",  # Orange
-        "#2ca02c",  # Green
-        "#d62728",  # Red
-        "#9467bd",  # Purple
-        "#8c564b",  # Brown
-    ]
 
-    line_styles = ["-", "--", ":", "-."]
-
-    for i, method in enumerate(method_names):
+    for method in methods:
         x, observed = curves[method]
-
-        color = colors[i % len(colors)]
-        linestyle = line_styles[(i // len(colors)) % len(line_styles)]
-
-        line, = ax.plot(
-            x, observed,
+        style = (method_styles[method] if method in method_styles.keys()
+                        else {"color": f"C{method.index(method) % 10}", "linestyle": "-"})
+        ax.plot(
+            x,
+            observed,
             marker="o",
-            color=color,
-            linestyle=linestyle,
+            color=style["color"],
+            linestyle=style["linestyle"],
             label=labels[method],
         )
 
@@ -387,56 +376,39 @@ def plot_calibration_curves(
                 & np.isfinite(high)
             )
             ax.fill_between(
-                band_x[valid], low[valid], high[valid],
-                color=color,
+                band_x[valid],
+                low[valid],
+                high[valid],
+                color=style["color"],
                 alpha=0.18,
             )
+
+    ax.set_xlim(-0.05, 1.05)
+    ax.set_ylim(-0.05, 1.05)
+    ax.set_xticks(np.linspace(0, 1, 6))
+    ax.set_yticks(np.linspace(0, 1, 6))
+    ax.tick_params(axis="both", labelsize=14)
+    ax.set_xlabel("Mean predicted probability", fontsize=16)
+    ax.set_ylabel("Observed event frequency", fontsize=16)
+    ax.set_title(f"Calibration curves ({dataset})", fontsize=18, pad=15)
+    ax.grid(True, color="0.85", linewidth=0.8)
+    ax.set_axisbelow(True)
+
+    ax.legend(
+        loc="upper left",
+        #bbox_to_anchor=(0.02, 0.90),
+        handlelength=4,
+        fontsize=legend_fontsize,
+        frameon=True,
+        framealpha=0.9,
+    )
+
     fig.tight_layout()
 
     if show:
         plt.show()
 
     return fig, ax
-
-def plot_calibration(prob_pred, prob_true, all_runs, title="Calibration curves"):
-
-    methods = list(prob_pred.keys())
-    n_models = len(methods)
-
-    # 🎨 colori consistenti
-    cmap = plt.get_cmap("tab10")
-    colors = {m: cmap(i) for i, m in enumerate(methods)}
-
-    # Crea figura e asse
-    fig, ax_cal = plt.subplots(figsize=(10, 6))
-    
-    # =========================
-    # CALIBRATION CURVE
-    # =========================
-    ax_cal.plot([0, 1], [0, 1], '--', label='Perfect calibration')
-
-    for i, m in enumerate(methods):
-        x = np.array(prob_pred[m])
-        y = np.array(prob_true[m])
-        y_true_oof, y_prob_oof = np.array(all_runs[m][0]), np.array(all_runs[m][1]) #all_runs[m]
-        brier = brier_score_loss(y_true_oof, y_prob_oof)
-
-        color = colors[m]
-
-        ax_cal.plot(
-            x, y,
-            marker='o',
-            color=color,
-            label=f"{m} (Brier={brier:.3f})"
-        )
-
-    ax_cal.set_title(title)
-    ax_cal.set_ylabel("Fraction of positives")
-    ax_cal.legend(loc="upper left")
-    ax_cal.grid(True)
-    plt.tight_layout()
-    plt.show()
-    return fig
 
 def distrib_summary(df_orig, disease_mapper):
 
