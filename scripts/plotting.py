@@ -11,7 +11,7 @@ from sklearn.metrics import brier_score_loss
 
 def plot_radar(
     df,
-    method_styles={},
+    method_styles=None,
     title="Radar plot",
     figsize=(10, 7),
     legend_fontsize=10,
@@ -21,10 +21,7 @@ def plot_radar(
         raise ValueError("Method names must be unique.")
 
     methods = list(df.index)
-    missing_styles = [method for method in methods if method not in method_styles]
-    if missing_styles:
-        raise ValueError(f"Missing styles for methods: {missing_styles}")
-
+    
     plot_metrics = list(df.columns)
     if not plot_metrics:
         raise ValueError("DataFrame must contain at least one metric.")
@@ -44,18 +41,28 @@ def plot_radar(
     ax.set_ylim(0, 1)
     ax.set_title(title, pad=25)
 
+    if method_styles is None:
+        colors = plt.get_cmap("tab10").colors
+        linestyles = ["-", "--", "-.", ":"]
+        method_styles = {
+            method: {
+                "color": colors[i % len(colors)],
+                "linestyle": linestyles[
+                    (i // len(colors)) % len(linestyles)
+                ],
+            }
+            for i, method in enumerate(methods)
+        }
+    
     for method in methods:
         values = df.loc[method, plot_metrics].to_numpy(dtype=float)
         closed_values = np.r_[values, values[0]]
-        style = (method_styles[method] if method in method_styles.keys()
-                    else {"color": f"C{method.index(method) % 10}", "linestyle": "-"})
-
         ax.plot(
             closed_angles,
             closed_values,
             linewidth=2,
             label=method,
-            **style,
+            **method_styles[method],
         )
 
     if methods:
@@ -75,7 +82,7 @@ def plot_radar(
 def plot_radars(
     dfm1,
     dfm2,
-    method_styles={},
+    method_styles=None,
     titles=("plot 1", "plot 2"),
     figsize=(16, 9),
     width_ratios=(1.4, 0.6, 1.4),
@@ -89,9 +96,18 @@ def plot_radars(
         raise ValueError("Method names must be unique in each DataFrame.")
 
     methods = list(dict.fromkeys([*dfm1.index, *dfm2.index]))
-    missing_styles = [method for method in methods if method not in method_styles]
-    if missing_styles:
-        raise ValueError(f"Missing styles for methods: {missing_styles}")
+    if method_styles is None:
+        colors = plt.get_cmap("tab10").colors
+        linestyles = ["-", "--", "-.", ":"]
+        method_styles = {
+            method: {
+                "color": colors[i % len(colors)],
+                "linestyle": linestyles[
+                    (i // len(colors)) % len(linestyles)
+                ],
+            }
+            for i, method in enumerate(methods)
+        }
 
     plot_metrics = list(dfm1.columns)
     if not plot_metrics:
@@ -127,14 +143,12 @@ def plot_radars(
             values = df.loc[method, plot_metrics].to_numpy(dtype=float)
             closed_values = np.r_[values, values[0]]
 
-            style = (method_styles[method] if method in method_styles.keys()
-                        else {"color": f"C{method.index(method) % 10}", "linestyle": "-"})
             line, = ax.plot(
                 closed_angles,
                 closed_values,
                 linewidth=2,
                 label=method,
-                **style,
+                **method_styles[method],
             )
 
             legend_handles.setdefault(method, line)
@@ -296,7 +310,7 @@ def plot_calibration_curves(
     summary,
     curves,
     dataset,
-    method_styles={},
+    method_styles=None,
     bands=None,
     show_ci_band=False,
     figsize=(20, 11),
@@ -324,6 +338,19 @@ def plot_calibration_curves(
     """
     if show_ci_band and bands is None:
         raise ValueError("bands must be provided when show_ci_band=True.")
+
+    if method_styles is None:
+        colors = plt.get_cmap("tab10").colors
+        linestyles = ["-", "--", "-.", ":"]
+        method_styles = {
+            method: {
+                "color": colors[i % len(colors)],
+                "linestyle": linestyles[
+                    (i // len(colors)) % len(linestyles)
+                ],
+            }
+            for i, method in enumerate(methods)
+        }
 
     def metric_label(stats, name, decimals):
         row = stats.loc[name]
@@ -355,14 +382,12 @@ def plot_calibration_curves(
 
     for method in methods:
         x, observed = curves[method]
-        style = (method_styles[method] if method in method_styles.keys()
-                        else {"color": f"C{method.index(method) % 10}", "linestyle": "-"})
         ax.plot(
             x,
             observed,
             marker="o",
-            color=style["color"],
-            linestyle=style["linestyle"],
+            color=method_styles[method]["color"],
+            linestyle=method_styles[method]["linestyle"],
             label=labels[method],
         )
 
@@ -379,7 +404,7 @@ def plot_calibration_curves(
                 band_x[valid],
                 low[valid],
                 high[valid],
-                color=style["color"],
+                color=method_styles[method]["color"],
                 alpha=0.18,
             )
 
