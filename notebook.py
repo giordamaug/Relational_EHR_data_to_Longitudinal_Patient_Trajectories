@@ -100,18 +100,16 @@ def shuffle_events(event_sequences, event_sequences_type, seed):
 
 import sys, os
 
-DATA_PATH = "data" # "your-path-to-data"
 DEFAULT_METHODS = ['STATIC', 'BINARY', 'FREQUENCY', 'EVENT-CNT', 'TF-IDF', 
-              'BOW', 'BiPadLSTM', 'Med2Vec', 'Dipole', 'CEHR-BERT',
-               'DOME', 'GRU']
+                   'BOW', 'BiPadLSTM', 'Med2Vec', 'Dipole', 'CEHR-BERT',
+                   'DOME', 'GRU']
 import argparse
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Esegue l'esperimento sul dataset INA")
-    parser.add_argument("--data-path", default="data", help="Cartella contenente il dataset")
-    parser.add_argument("--datafile")
-    parser.add_argument("--dataname", default="INA")
-    parser.add_argument("--pathology-field", default="primary_disease")
+    parser.add_argument("--datafile", help="Input dataset path (JSON)")
+    parser.add_argument("--dataname", default="INA", help="Name of dataset")
+    parser.add_argument("--pathology-field", default="primary_disease", help="Name of primary disease attibute")
     parser.add_argument(
         "--disease-list",
         nargs="+",
@@ -126,59 +124,65 @@ def parse_args():
             "OTI - Other Trauma Iatrogenic",
             "OTH - Other pathology",
         ],
+        help="List of primary disease for patient selection"
     )
     parser.add_argument(
         "--static-vars",
         nargs="+",
         default=["gender", "age_group", "age_at_splenectomy", "primary_disease"],
+        help="List of static variables (used by STATIC method)"
     )
     parser.add_argument(
         "--pattern",
         default=r"Encounter for palliative|Do not resuscitate|Patient room in hospital|Unspecified place",
+        help="Patterns to match for event removals"
     )
-    parser.add_argument("--target-var", default="is_alive?")
-    parser.add_argument("--evfields", nargs="+", default=["code_descr"])
-    parser.add_argument("--remove-events", nargs="+", default=["drug"])
+    parser.add_argument("--target-var", default="is_alive?", help="Set target variable")
+    parser.add_argument("--evfields", nargs="+", default=["code_descr"], help="Event description field used in processing of clinical sequences (\"event\", \"code\", \"code_descr\")")
+    parser.add_argument("--remove-events", nargs="+", default=["drug"], help="Type of event to remove from clinical sequences")
     parser.add_argument(
         "--metrics",
         nargs="+",
         default=[
             "AUC", "AUPRC", "F1", "PPV", "Sensitivity", "Specificity",
             "NPV", "MCC", "Accuracy", "Brier", "CM",
-        ],
+        ], help="Metric list"
     )
 
-    parser.add_argument("--enable-plot", action=argparse.BooleanOptionalAction, default=False)
-    parser.add_argument("--n-splits", type=int, default=5)
-    parser.add_argument("--num-epochs", type=int, default=10)
-    parser.add_argument("--batch-size", type=int, default=16)
-    parser.add_argument("--embedding-dim", type=int, default=128)
-    parser.add_argument("--hidden-dim", type=int, default=300)
-    parser.add_argument("--random-state", type=int, default=42)
-    parser.add_argument("--enable-save", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--perf-save", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--shuffle", action=argparse.BooleanOptionalAction, default=False)
-    parser.add_argument("--iter", type=int, default=10)
-    parser.add_argument("--thresh", type=float, default=0.3)
-    parser.add_argument("--results-dir", default="experiment_main")
-    parser.add_argument("--folds-dir", default=None)
+    parser.add_argument("--enable-plot", action=argparse.BooleanOptionalAction, default=False, help="Enable training graph plotting")
+    parser.add_argument("--n-splits", type=int, default=5, help="Number of folds in cross-validation")
+    parser.add_argument("--num-epochs", type=int, default=10, help="Embeddign param (number of epochs)")
+    parser.add_argument("--batch-size", type=int, default=16, help="Embeddign param (batch size in training/testing)")
+    parser.add_argument("--embedding-dim", type=int, default=128, help="Embeddign param (final embedding size)")
+    parser.add_argument("--hidden-dim", type=int, default=300, help="Embeddign param (last hidden layer size)")
+    parser.add_argument("--random-state", type=int, default=42, help="Set initial random seed (for reproducibility)")
+    parser.add_argument("--enable-save", action=argparse.BooleanOptionalAction, default=True, help="Enable cv partition saving (if a valid dir)")
+    parser.add_argument("--perf-save", action=argparse.BooleanOptionalAction, default=True, help="Enable saving to file of mehods memory/time consumptions")
+    parser.add_argument("--shuffle", action=argparse.BooleanOptionalAction, default=False, help="Enable shuffling of clinical events")
+    parser.add_argument("--iter", type=int, default=10, help="Number of repetition of cross-validation")
+    parser.add_argument("--thresh", type=float, default=0.3, help="Set classification threshold")
+    parser.add_argument("--results-dir", default="experiment_main", help="Folder for metric measure saving")
+    parser.add_argument("--folds-dir", default=None, help="")
     parser.add_argument(
         "--onlysplenectomized",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=True, 
+        help="Select only splenectomized patients"
     )
     parser.add_argument(
         "--removelastadm",
         action=argparse.BooleanOptionalAction,
         default=True,
+        help="Enable removal of last admission events (only in MIMIC)"
     )
-    parser.add_argument("--mode", choices=["skip", "e2e", "embed"], default="skip")
-    parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--mode", choices=["skip", "e2e", "embed"], default="skip", 
+                        help="Execution mode: \n- embed: embedding+LGBM classification\n- e2e: end-to-end classification (only for Med2Vec, Dipole, BiPadLSTM, GRU, CEHR-BERT)")
+    parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=True, help="Enable verbosity")
     parser.add_argument(
         "--methods",
         nargs="+",
         default=None,
-        help="Method list with combination of methods with +",
+        help="Method list, combine methods with + (example, STATIC STATIC+DOME ...))",
     )
     return parser.parse_args()
 
@@ -187,8 +191,8 @@ def parse_args():
 def main(args):
     start = time.monotonic()
     cnt = 0
-    if args.verbose: print(f"\033[32m{(cnt := cnt + 1)} Loading the dataset {Path(args.data_path) / args.datafile}...\033[0m")
-    args.dataset = pd.read_json(Path(args.data_path) / args.datafile)
+    if args.verbose: print(f"\033[32m{(cnt := cnt + 1)} Loading the dataset {args.datafile}...\033[0m")
+    args.dataset = pd.read_json(args.datafile)
     args.dataset.set_index("id", inplace=True)
     if args.verbose: print(args.dataset.head(), f"\033[33mPatients no: {len(args.dataset)}\033[0m")
 
@@ -295,8 +299,6 @@ def main(args):
         plt.ylabel('')
         plt.show()
     target_df.replace({"YES": 0, "NO": 1}, inplace=True)
-    if args.enable_save:
-        target_df.to_csv(os.path.join(DATA_PATH, f"{args.dataname}_targets.csv"))
     if args.verbose: print(print_ascii_table(target_df.value_counts(dropna=False).reset_index(name="count")))
     method_list = list(map(lambda x: x.split("+"), args.methods))
     print(args.methods)
