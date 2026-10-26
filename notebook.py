@@ -145,7 +145,7 @@ def parse_args():
         default=r"Encounter for palliative|Do not resuscitate|Patient room in hospital|Unspecified place",
     )
     parser.add_argument("--target-var", default="is_alive?")
-    parser.add_argument("--evfields", nargs="+", default=["event"])
+    parser.add_argument("--evfields", nargs="+", default=["code_descr"])
     parser.add_argument("--remove-events", nargs="+", default=["drug"])
     parser.add_argument(
         "--metrics",
@@ -239,7 +239,7 @@ def main(args):
     event_sequences = { id: [(" ".join([event[field] if isinstance(event[field], str) else "NONE" for field in args.evfields]), 
                             event[date_field], event[type_field]) for event in events] for (id,events) in args.dataset[[events_field]].to_dict()[events_field].items()} 
     if args.verbose: 
-        print(f"\033[32m{(cnt := cnt + 1)} Extracting clinical trajectories...\033[0m \033[33mPatients no {len(event_sequences)}\033[0m")
+        print(f"\033[32m{(cnt := cnt + 1)} Extracting clinical trajectories by\033[0m {args.evfields}...\033[0m \033[33mPatients no {len(event_sequences)}\033[0m")
 
     # ### Remove events by types
     # get sequence of event names
@@ -329,6 +329,10 @@ def main(args):
         if args.mode == "embed":
             for i in range(args.iter):
                 set_seed(args.random_state+i)
+                if args.verbose: 
+                    print(f"\033[95m####################\033[0m")
+                    print(f"\033[95m# ITERATION:{i}      #\033[0m")
+                    print(f"\033[95m####################\033[0m")
                 if args.shuffle: 
                     if args.verbose: print(f"\033[32m{(cnt := cnt + 1)} Shuffling sequences...\033[0m")
                     event_sequences, event_sequences_type, visit_sequences,= shuffle_events(event_sequences, event_sequences_type, args.random_state+i)
@@ -356,6 +360,10 @@ def main(args):
             args.methods = list(np.array(args.methods).ravel())
             for i in range(args.iter):
                 set_seed(args.random_state+i)
+                if args.verbose: 
+                    print(f"\033[95m####################\033[0m")
+                    print(f"\033[95m# ITERATION:{i}      #\033[0m")
+                    print(f"\033[95m####################\033[0m")
                 if args.shuffle: 
                     if args.verbose: print(f"\033[32m{(cnt := cnt + 1)} Shuffling sequences...\033[0m")
                     event_sequences, event_sequences_type, visit_sequences,= shuffle_events(event_sequences, event_sequences_type, args.random_state+i)
