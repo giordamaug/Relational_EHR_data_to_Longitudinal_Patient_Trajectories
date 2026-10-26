@@ -41,8 +41,8 @@ def stats_analysis(results, metrics, methods, iter):
     for metric in metrics:
         df = dfs[metric]
 
-        if "STATIC" in df.columns:
-            df = df.drop(columns=["STATIC"])
+        #if "STATIC" in df.columns:
+        #    df = df.drop(columns=["STATIC"])
 
         stat, p = friedman_test(df, alpha=alpha, debug=True)
 
