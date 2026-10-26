@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# [![Google Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/giordamaug/Relational_EHR_data_to_Longitudinal_Patient_Trajectories/blob/main/notebook.ipynb)
-
-# ## Libraries
+### Libraries
 
 import torch
 import pandas as pd
