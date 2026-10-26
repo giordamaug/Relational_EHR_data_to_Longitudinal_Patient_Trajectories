@@ -13,13 +13,79 @@ def friedman_test(df, alpha = 0.05, debug=False):
     if debug:
         print("\n=== FRIEDMAN TEST ===")
         print(f"Statistic: {stat:.4f}")
-        print(f"p-value: {p:.6f}")
+        print(f"p-value: {p:.2e}")
 
     if p < alpha:
         if debug: print("➡️ SIGNIFICANT global differences")
     else:
         if debug: print("➡️ No global differences")
     return stat, p
+
+
+def stats_analysis(results, metrics, methods, iter):
+    alpha = 0.05
+    friedman_results = {}
+    wilcoxon_p_matrices = {}
+    wilcoxon_rankings = {}
+
+    dfs = {}
+    for metric in metrics:
+        values = {method : [] for method in methods}
+        for method in methods:
+            lista = []
+            for i in range(iter):
+                lista += results[method][i][metric]
+            values[method] = lista
+        dfs[metric] = pd.DataFrame.from_dict(values)
+    
+    for metric in metrics:
+        df = dfs[metric]
+
+        if "STATIC" in df.columns:
+            df = df.drop(columns=["STATIC"])
+
+        stat, p = friedman_test(df, alpha=alpha, debug=True)
+
+        friedman_results[metric] = {
+            "statistic": stat,
+            "p_value": p,
+            "global_diff": "YES" if p < alpha else "NO"
+        }
+
+        if p < alpha:
+            p_matrix, reject, p_corr, results = wilcoxon_test(
+                df,
+                alpha=alpha,
+                debug=True
+            )
+
+            ranking = wilcoxon_ranking(
+                df,
+                reject,
+                higher_is_better=True
+            )
+
+            wilcoxon_p_matrices[metric] = p_matrix
+            wilcoxon_rankings[metric] = ranking
+        
+    ranking_table = pd.DataFrame()
+
+    for metric in metrics:
+        ranking = wilcoxon_rankings[metric].copy()
+        ranking["rank"] = ranking["score"].rank(
+            method="min",
+            ascending=False
+        ).astype(int)
+        ranking_table[metric] = ranking["rank"]
+    ranking_table = ranking_table[metrics]
+
+    # ordinamento gerarchico:
+    ranking_table = ranking_table.sort_values(
+        by=metrics,
+        ascending=True      # rank 1 migliore
+    )
+    return pd.DataFrame(friedman_results).T, ranking_table
+
 
 # ========================
 # WILCOXON POST-HOC + HOLM
