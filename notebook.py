@@ -65,18 +65,12 @@ def set_seed(seed=42):
 
 def check_methods(methods, defmethods):
     if methods is None:
-        return [['STATIC'],
-                    ['STATIC', 'BINARY'],['STATIC', 'FREQUENCY'],['STATIC', 'EVENT-CNT'],  # baseline
-                    ['STATIC', 'TF-IDF'], ['STATIC', 'BOW'],
-                    ['STATIC', 'BiPadLSTM'], ['STATIC', 'Med2Vec'],['STATIC', 'Dipole'],['STATIC', 'CEHR-BERT'],
-                    ['STATIC', 'DOME'],['STATIC', 'GRU'],]
+        return ['STATIC', 'STATIC+BINARY', 'STATIC+FREQUENCY', 'STATIC+EVENT-CNT',  # baseline
+                'STATIC+TF-IDF', 'STATIC+BOW', 'STATIC+BiPadLSTM', 'STATIC+Med2Vec', 
+                'STATIC+Dipole', 'STATIC+CEHR-BERT', 'STATIC+DOME', 'STATIC+GRU']
     for meths in methods:
-        if type(meths) is list:
-            for m in meths:
-                if not m in defmethods:
-                    raise ValueError(f"\033[31mWrong method {m}!\033[0m")
-        else:
-            if not meths in args.defmethods:
+        for m in meths.split("+"):
+            if not m in defmethods:
                 raise ValueError(f"\033[31mWrong method {meths}!\033[0m")
     return methods
 
@@ -183,9 +177,8 @@ def parse_args():
     parser.add_argument(
         "--methods",
         nargs="+",
-        action="append",
         default=None,
-        help="Ripeti l'opzione per definire più gruppi di metodi",
+        help="Method list with combination of methods with +",
     )
     return parser.parse_args()
 
@@ -305,13 +298,14 @@ def main(args):
     if args.enable_save:
         target_df.to_csv(os.path.join(DATA_PATH, f"{args.dataname}_targets.csv"))
     if args.verbose: print(print_ascii_table(target_df.value_counts(dropna=False).reset_index(name="count")))
+    method_list = list(map(lambda x: x.split("+"), args.methods))
     print(args.methods)
 
     if args.verbose: print(f"\033[32m{(cnt := cnt + 1)} Validation with mode {args.mode}...\033[0m")
     if args.mode in ["embed", "e2e"]:
-        prob_pred = {"+".join(m): [] for m in args.methods}
-        prob_true = {"+".join(m): [] for m in args.methods}
-        all_runs = {"+".join(m): ([], []) for m in args.methods}
+        prob_pred = {m: [] for m in args.methods}
+        prob_true = {m: [] for m in args.methods}
+        all_runs = {m: ([], []) for m in args.methods}
         cpu_profiler = {m: {"emb_train_time_s": [],
             "emb_inference_time_s": [],
             "emb_inference_ms_per_patient": [],
@@ -322,7 +316,7 @@ def main(args):
             "clf_train_time_s": [],
             "clf_inference_time_s": [],
             "clf_inference_ms_per_patient": [],
-            "clf_cpu_memory_delta_mb": [],} for xs in args.methods for m in xs}
+            "clf_cpu_memory_delta_mb": [],} for xs in method_list for m in xs}
         # ## Validation (Iterated 5-fold)
         if args.mode == "embed":
             for i in range(args.iter):
@@ -337,14 +331,14 @@ def main(args):
                 embedder_configs = configure(event_sequences, visit_sequences, event_sequences_type, target_df.to_dict(), X_static, args)
                 for m in args.methods:
                     _,_,_,_,_, profile, results = lgbm_cv_iter(embedder_configs, target_df, args.selected_patient_ids, i,
-                                                                        methods=m, threshold=args.thresh, random_state=args.random_state+i, 
+                                                                        methods=m.split("+"), threshold=args.thresh, random_state=args.random_state+i, 
                                                                         return_metrics=True, fold_indices_dir=args.folds_dir)
-                    prob_pred["+".join(m)] += list(results['calibration_prob_pred'])
-                    prob_true["+".join(m)] += list(results['calibration_prob_true'])
-                    all_runs["+".join(m)] = (all_runs["+".join(m)][0] + list(results['y_true_oof']),
-                                                all_runs["+".join(m)][1] +  list(results['y_prob_oof']))
+                    prob_pred[m] += list(results['calibration_prob_pred'])
+                    prob_true[m] += list(results['calibration_prob_true'])
+                    all_runs[m] = (all_runs[m][0] + list(results['y_true_oof']),
+                                                all_runs[m][1] +  list(results['y_prob_oof']))
                     if args.enable_save: 
-                        with open(f"{args.results_dir}/results_{args.dataname}_{'_'.join(m)}_ITER{i}.pkl", 'wb') as f:
+                        with open(f"{args.results_dir}/results_{args.dataname}_{m.replace('+','_')}_ITER{i}.pkl", 'wb') as f:
                             pickle.dump(results, f)
                     for method,record in profile.items():
                         for measure,lm in record.items():
@@ -375,25 +369,11 @@ def main(args):
                     if args.enable_save: 
                         with open(f"{args.results_dir}/results_{args.dataname}_{m}_ITER{i}.pkl", 'wb') as f:
                             pickle.dump(results, f)
-        if args.enable_save: 
-            # ### Save main inputs
-            dati = {
-                "event_sequences": event_sequences,
-                "visit_sequences": visit_sequences,
-                "event_sequences_type": event_sequences_type,
-                "target_df": target_df,
-                "X_static": X_static,
-                "args": args,
-                "embedder_configs": embedder_configs,
-            }
-            if args.verbose: print(f"\033[32m{(cnt := cnt + 1)} Saving inputs in {args.results_dir}/{args.dataname}_input_cv.pkl ...\033[0m")
-            with open(f"{args.results_dir}/{args.dataname}_input_cv.pkl", "wb") as f:
-                pickle.dump(dati, f, protocol=pickle.HIGHEST_PROTOCOL)
     elif args.mode == "skip":
         embedder_configs = configure(event_sequences, visit_sequences, event_sequences_type, target_df.to_dict(), X_static, args)
         train_idx = args.selected_patient_ids
         valid_idx = args.selected_patient_ids
-        for method in args.methods:
+        for method in list(map(lambda x: x.split("+"), args.methods)):
             for meth in method:
                 cfg = embedder_configs[meth]
                 func = cfg["func"]
