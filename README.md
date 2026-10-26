@@ -52,4 +52,4 @@ Once summary files are generated for metric values, you can plot the results by 
 - `results_ablation_code.ipynb` displays radar plots (and comparison barplots) for ICD code experiments
 - `results_ablation_shuffle.ipynb` displays radar plots (and comparison barplots) for Shuffling experiments
 
-The notebook `mimic_to_json.ipynb` implements the worflow for generating a unified JSON representation  of clinical data starting from relational database MIMIC-IV sources (you need a licence from Physionet to download MIMIC-IV v.3.1 source data)
+The notebook `mimic_to_json.ipynb` implements the worflow for generating a unified JSON representation  of clinical data starting from relational database MIMIC-IV sources (you need a licence from Physionet to download MIMIC-IV v.3.1 source data).
