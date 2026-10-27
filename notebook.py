@@ -229,7 +229,8 @@ def main(args):
 
     if args.removelastadm and args.dataname == "MIMIC":
         for ind,row in args.dataset.iterrows():
-            args.dataset.at[ind, "events"] = list(filter(lambda event: event['admission_id'] != row["admission_id_of_death"], row['events']))
+            #args.dataset.at[ind, "events"] = list(filter(lambda event: event['admission_id'] != row["admission_id_of_death"], row['events']))
+            args.dataset.at[ind, "events"] = list(filter(lambda event: event['admission_id'] != row["last_admission_id"], row['events']))
         if args.verbose: print(f"\033[32m{(cnt := cnt + 1)} Remove events in the mortal admission...\033[0m \033[33mPatients no: {len(args.selected_patient_ids)}\033[0m")
 
     # ### Remove patients with specific cause of death
