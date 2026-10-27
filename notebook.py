@@ -3,25 +3,38 @@
 
 ### Libraries
 
+import io
 import torch
 import pandas as pd
 import numpy as np
 import re
 import warnings
 warnings.simplefilter(action='ignore')
-import numpy as np
 import os
 import random
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use("Agg")
 import pickle
 from scripts.cv_folding import lgbm_cv_iter, e2e_cv
-from pathlib import Path
 import time
 from scripts.configure import configure
 from scripts.utils import group_events_by_visit
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import matthews_corrcoef
+import lightgbm as lgb
+from tqdm.auto import tqdm
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"       # to force BERT determinsm
+
+class TerminalOutput:
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+    def clear_output(self, wait=False):
+        pass  # Nel terminale conserva i messaggi già stampati
 
 def print_ascii_table(df, show_index=False):
     headers = [str(col) for col in df.columns]
@@ -175,7 +188,7 @@ def parse_args():
         default=True,
         help="Enable removal of last admission events (only in MIMIC)"
     )
-    parser.add_argument("--mode", choices=["skip", "e2e", "embed"], default="skip", 
+    parser.add_argument("--mode", choices=["skip", "e2e", "embed", "shap"], default="skip", 
                         help="Execution mode: \n- embed: embedding+LGBM classification\n- e2e: end-to-end classification (only for Med2Vec, Dipole, BiPadLSTM, GRU, CEHR-BERT)")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=True, help="Enable verbosity")
     parser.add_argument(
@@ -301,7 +314,6 @@ def main(args):
     target_df.replace({"YES": 0, "NO": 1}, inplace=True)
     if args.verbose: print(print_ascii_table(target_df.value_counts(dropna=False).reset_index(name="count")))
     method_list = list(map(lambda x: x.split("+"), args.methods))
-    print(args.methods)
 
     if args.verbose: print(f"\033[32m{(cnt := cnt + 1)} Validation with mode {args.mode}...\033[0m")
     if args.mode in ["embed", "e2e"]:
@@ -383,6 +395,143 @@ def main(args):
                 kwargs["train_idx"] = train_idx
                 kwargs["valid_idx"] = valid_idx
                 func(**kwargs)
+    elif args.mode == "shap":
+        import shap
+        frame_top = TerminalOutput()
+        frame_tqdm = TerminalOutput()
+        frame_plot = TerminalOutput()
+        frame_log = TerminalOutput()
+        embedder_configs = configure(event_sequences, visit_sequences, event_sequences_type, target_df.to_dict(), X_static, args)
+        lgb_params = {
+            "objective": "binary",
+            "metric": "None",
+            "verbosity": -3,
+            "is_unbalance": True,
+            "seed": args.random_state,
+            "deterministic": True,
+            "force_col_wise": True,
+        }
+        def mcc_eval(y_pred, dataset):
+            y_true = dataset.get_label()
+            y_pred_labels = (y_pred > args.thresh).astype(int)
+            mcc = matthews_corrcoef(y_true,y_pred_labels)
+            return "MCC", mcc, True
+
+        for m in args.methods:
+            set_seed(args.random_state)
+            skf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.random_state)
+            y_df = target_df.loc[args.selected_patient_ids]
+            y = (y_df.values.astype(np.float32).ravel())
+            cvfolding = tqdm(skf.split(args.selected_patient_ids,y),total=args.n_splits,desc="Folds", position=0, leave=True)
+            for fold, (tr_idx, val_idx) in enumerate(cvfolding):
+
+                train_idx = args.selected_patient_ids[tr_idx]
+                valid_idx = args.selected_patient_ids[val_idx]
+                cfg = embedder_configs[m]
+                func = cfg["func"]
+                kwargs = (cfg["kwargs"].copy())
+                kwargs["train_idx"] = train_idx
+                kwargs["valid_idx"] = valid_idx
+                X_emb_tr, X_emb_val, profile = func(**kwargs, frame_tqdm=frame_tqdm,frame_plot=frame_plot)                
+                y_train = target_df.loc[train_idx]
+                y_valid = target_df.loc[valid_idx]
+                X_train = pd.concat([X_emb_tr, X_static.loc[train_idx]], axis=1)
+                X_val = pd.concat([X_emb_val, X_static.loc[valid_idx]], axis=1)
+                X = pd.concat([X_train, X_val], axis=0)
+                shap_oof = np.zeros(X.shape)
+                base_oof = np.zeros(len(X))
+                train_data = lgb.Dataset(X_train,label=y_train)
+                valid_data = lgb.Dataset(X_val,label=y_valid)
+                model = lgb.train(lgb_params,train_data,num_boost_round=1000,
+                    valid_sets=[valid_data],
+                    feval=mcc_eval,
+                    callbacks=[lgb.early_stopping(50, verbose=False),lgb.log_evaluation(0)])
+                # Il background viene preso solo dal training del fold
+                background = shap.sample(X_train, min(100, len(X_train)))
+                explainer = shap.TreeExplainer(
+                    model,
+                    data=background,
+                    feature_perturbation="interventional"
+                )
+                explanation = explainer(X_val)
+                shap_oof[val_idx] = explanation.values
+                base_oof[val_idx] = explanation.base_values
+            # Spiegazioni out-of-fold per l'intero dataset
+            explanation_oof = shap.Explanation(
+                values=shap_oof,
+                base_values=base_oof,
+                data=X.to_numpy(),
+                feature_names=X.columns.tolist()
+            )
+            # 1. Violin plot
+            plt.figure()
+
+            shap.summary_plot(
+                shap_values=shap_oof,
+                features=X,
+                feature_names=X.columns.tolist(),
+                plot_type="violin",
+                max_display=15,
+                plot_size=(12, 8),
+                show=False
+            )
+
+            fig_violin = plt.gcf()
+            buffer_violin = io.BytesIO()
+            fig_violin.savefig(
+                buffer_violin, format="png", dpi=300,
+                bbox_inches="tight", facecolor="white"
+            )
+            buffer_violin.seek(0)
+            image_violin = plt.imread(buffer_violin)
+            plt.close(fig_violin)
+
+            # 2. Bar plot
+            plt.figure()
+
+            shap.plots.bar(
+                explanation_oof,
+                max_display=15,
+                show=False
+            )
+
+            fig_bar = plt.gcf()
+            fig_bar.set_size_inches(12, 8)
+
+            buffer_bar = io.BytesIO()
+            fig_bar.savefig(
+                buffer_bar, format="png", dpi=300,
+                bbox_inches="tight", facecolor="white"
+            )
+            buffer_bar.seek(0)
+            image_bar = plt.imread(buffer_bar)
+            plt.close(fig_bar)
+
+            # 3. Figura finale con due pannelli uno sotto l'altro
+            fig, axes = plt.subplots(2, 1, figsize=(14, 20))
+
+            axes[0].imshow(image_violin)
+            axes[0].set_title("A. SHAP value distribution")
+
+            axes[1].imshow(image_bar)
+            axes[1].set_title("B. Global feature importance")
+
+            for ax in axes:
+                ax.axis("off")
+
+            fig.tight_layout()
+
+            fig.savefig(
+                f"{args.results_dir}/{args.dataname}_{m}_shap.png",
+                dpi=300,
+                bbox_inches="tight",
+                facecolor="white"
+            )
+
+            plt.close(fig)
+            buffer_violin.close()
+            buffer_bar.close()
+            if args.verbose:print(f"\033[32m{(cnt := cnt + 1)} Saving SHAP plot\033[0m {args.results_dir}/{args.dataname}_{m}_shap.png")
     else:
         raise ValueError(f"Wrong mode {args.mode}!")
     elapsed = int(time.monotonic() - start)        
