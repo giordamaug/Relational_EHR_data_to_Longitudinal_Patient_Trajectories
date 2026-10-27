@@ -366,64 +366,6 @@ def summarize_repeated_cv(
 
     return summary, per_run, calibration
 
-def summarize_repeated_cv_old(
-    runs, metrics_names, threshold=0.30, n_boot=1000, seed=42
-):
-    y, P = align_oof_runs(runs)
-    rng = np.random.default_rng(seed)
-
-    # One metric row for each CV repetition
-    per_run = np.vstack([
-        metric_values(y, P[:, r], threshold)
-        for r in range(P.shape[1])
-    ])
-
-    mean = per_run.mean(axis=0)
-    std = (
-        per_run.std(axis=0, ddof=1)
-        if P.shape[1] > 1
-        else np.full(len(metrics_names), np.nan)
-    )
-
-    # Bootstrap: subject resampling, keeping joined predictions in all repetitions
-    boot_means = []
-
-    with tqdm(total=n_boot,initial=len(boot_means),desc="Bootstrap",unit="sample",) as pbar:
-        while len(boot_means) < n_boot:
-            idx = rng.integers(0, len(y), len(y))
-            y_b = y[idx]
-
-            # AUC e AUPRC require both classes
-            if np.unique(y_b).size < 2:
-                continue
-
-            P_b = P[idx, :]
-            scores_b = np.vstack([
-                metric_values(y_b, P_b[:, r], threshold)
-                for r in range(P_b.shape[1])
-            ])
-            boot_means.append(scores_b.mean(axis=0))
-            pbar.update(1)
-        
-    ci_low, ci_high = np.percentile(
-        np.asarray(boot_means), [2.5, 97.5], axis=0
-    )
-
-    summary = pd.DataFrame({
-        "mean": mean,
-        "std_between_runs": std,
-        "ci95_low": ci_low,
-        "ci95_high": ci_high,
-    }, index=metrics_names)
-
-    per_run = pd.DataFrame(
-        per_run,
-        columns=metrics_names,
-        index=pd.Index(range(len(runs)), name="iteration"),
-    )
-
-    return summary, per_run
-
 
 def format_results_table(
     summaries,
@@ -541,13 +483,6 @@ def summarize_method(meth, runs, metrics_names, threshold, n_boot, seed):
         n_boot=n_boot,
         seed=seed,
     )
-    #summary, per_run = summarize_repeated_cv(
-    #    runs,
-    #    metrics_names,
-    #    threshold=threshold,
-    #    n_boot=n_boot,
-    #    seed=seed,
-    #)
     return meth, summary, per_run, calibration
 
 def main():
