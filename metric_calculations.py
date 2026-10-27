@@ -539,7 +539,7 @@ def summarize_method(meth, runs, metrics_names, threshold, n_boot, seed):
         metrics_names=metrics_names,
         threshold=threshold,
         n_boot=n_boot,
-        n_bins=seed,
+        seed=seed,
     )
     #summary, per_run = summarize_repeated_cv(
     #    runs,
