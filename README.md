@@ -16,33 +16,15 @@ We included in this repository:
 - High Performance Computing and Networking (ICAR), Italian National Council of Research (CNR)
 
 ## Running the experiments
-The experiments can be run individually by using the `notebook.ipynb` that can be execute in the Google Colab (or Jupyter Lab) environments.
 
-The experiments can be run by terminal with the commands.
+All experiments can be run in the `run_experiments.ipynb` notebook that can be execute in the Google Colab (or Jupyter Lab) environments. Code cells in the notebook also display tables, radar plots, calibration curves, statistical analysis, etc.
+The notebook includes also code cell running the ablation experiments.
 
-
-```
-# Main experiments
-python notebook.py --dataname INA --datafile INA_dataset_rev1.json \
-  --results-dir experiment_main100 --mode embed --folds-dir-mimic folds100 --iter 10
-python notebook.py --dataname MIMIC --datafile MIMIC_dataset_rev1.json \
-  --results-dir experiment_main100 --mode embed --iter 10
-# End-to-end experiments
-python notebook.py --dataname INA --datafile INA_dataset_rev1.json --results-dir experiment_e2e100 --mode e2e --methods Med2Vec --methods Dipole --methods BiPadLSTM --methods GRU --iter 10
-python notebook.py --dataname INA --datafile INA_dataset_rev1.json --results-dir experiment_embed00 --mode embed --methods Med2Vec --methods Dipole --methods BiPadLSTM --methods GRU --iter 10
-# ICD code experiments
-python notebook.py --dataname INA --datafile INA_dataset_rev1.json \
-  --results-dir experiment_code100 --evfields code --mode embed --iter 10
-# Shuffling experiments
-python notebook.py --dataname INA --datafile INA_dataset_rev1.json \
-  --results-dir experiment_shuffle100 --mode embed --iter 10 --shuffle
-```
-
-During running the script `notebook.pyn` produces several temporary files (in `--results-dir` forlder) collecting metric measures. These measure need to be processed by the `metric_calculations.ipynb` notebook to sum-up metric statistics
+During running the script `notebook.py` produces several temporary files (in `--results-dir` forlder) collecting metric measures. These measure need to be processed by the `metric_calculations.py` script to sum-up metric statistics
 (mean, standard deviation, confidence  intervals, etc).
 Once summary files are generated for metric values, you can plot the results by using one of the associate notebook:
 
-- `run_experiments.ipynb` run each experiment (with results tables, radar plots, calibration curves, statistical analysis, etc)
-- `memory_analysis.ipynb` displays table of CPU, memory and time consumption of Main experiments 
-- `pycarets.ipynb` perform comparison of LighGBM classifier vs other methods with PyCaret toolset
-- `mimic_to_json.ipynb` implements the worflow for generating a unified JSON representation  of clinical data starting from relational database MIMIC-IV sources (you need a licence from Physionet to download MIMIC-IV v.3.1 source data).
+The additional notebook `mimic_to_json.ipynb` implements the worflow for generating a unified JSON representation  of clinical data starting from relational. In the notebook there are instruction to download the public demo version of MIMIC-IV data files.
+NOTE: you need licence to download the full PhysioNet MIMIC-IV v.3.1 source data files. 
+
+We also added the ntebook `pycarets.ipynb` to perform comparison of LighGBM classifier vs other methods with PyCaret toolset. 
