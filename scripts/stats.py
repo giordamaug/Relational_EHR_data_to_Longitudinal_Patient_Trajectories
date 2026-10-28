@@ -67,7 +67,21 @@ def stats_analysis(results, metrics, methods, iter):
 
             wilcoxon_p_matrices[metric] = p_matrix
             wilcoxon_rankings[metric] = ranking
-        
+        else:
+            # Friedman not significative: no gloab difference detected
+            methods = df.columns
+
+            ranking = pd.DataFrame(
+                {
+                    "wins": 0,
+                    "losses": 0,
+                    "score": 0
+                },
+                index=methods
+            )
+
+            wilcoxon_rankings[metric] = ranking
+            
     ranking_table = pd.DataFrame()
 
     for metric in metrics:
