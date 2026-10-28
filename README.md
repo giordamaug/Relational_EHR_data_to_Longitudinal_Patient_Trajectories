@@ -27,4 +27,5 @@ Once summary files are generated for metric values, you can plot the results by 
 The additional notebook `mimic_to_json.ipynb` implements the worflow for generating a unified JSON representation  of clinical data starting from relational. In the notebook there are instruction to download the public demo version of MIMIC-IV data files.
 NOTE: you need licence to download the full PhysioNet MIMIC-IV v.3.1 source data files. 
 
-We also added the ntebook `pycarets.ipynb` to perform comparison of LighGBM classifier vs other methods with PyCaret toolset. 
+The notebook `pycarets.ipynb` can be used to perform comparison of LighGBM classifier vs other methods with PyCaret toolset. 
+NOTE: you might experience compatibility issues installing the right pycaret package in Google Colab runtime.
